@@ -10,6 +10,7 @@ WORKDIR /app
 # Copy dependency files
 COPY pyproject.toml .
 COPY uv.lock* .
+COPY README.md .
 
 # Install dependencies
 RUN uv sync --frozen --no-dev
@@ -23,8 +24,8 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN groupadd -r sandbox && useradd -r -g sandbox sandbox
+# Create non-root user with home directory
+RUN groupadd -r sandbox && useradd -r -g sandbox -m -d /home/sandbox sandbox
 
 # Set working directory
 WORKDIR /app
@@ -36,7 +37,7 @@ COPY --from=builder /app/.venv /app/.venv
 COPY src/ src/
 
 # Set ownership
-RUN chown -R sandbox:sandbox /app
+RUN chown -R sandbox:sandbox /app && chown -R sandbox:sandbox /home/sandbox
 
 # Switch to non-root user
 USER sandbox
