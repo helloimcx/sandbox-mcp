@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  sandbox-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=false
+      - MAX_KERNELS=10
+      - KERNEL_TIMEOUT=300
+      - MAX_EXECUTION_TIME=30
+      - KERNEL_CLEANUP_INTERVAL=60
+      # - API_KEY=your-secret-api-key  # Uncomment to enable API key auth
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/api/v1/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+
+  # Optional: Add a reverse proxy for production
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro  # SSL certificates
+    depends_on:
+      - sandbox-mcp
+    restart: unless-stopped
+    profiles:
+      - production
+
+volumes:
+  logs:
+    driver: local
+
+networks:
+  default:
+    name: sandbox-mcp-network
