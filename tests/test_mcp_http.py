@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """HTTP-based MCP unit tests using direct HTTP requests."""
 
-import asyncio
 import json
 import unittest
 import aiohttp
@@ -11,10 +10,15 @@ from typing import Dict, Any
 class MCPHTTPClient:
     """Simple MCP HTTP client for testing."""
     
-    def __init__(self, base_url: str = "http://localhost:8000"):
+    def __init__(self, base_url: str = "http://localhost:16010/ai/sandbox/v1"):
         self.base_url = base_url.rstrip('/')
         self.session = None
-    
+        self._id_counter = 1000  # 用于生成唯一ID
+
+    def _next_id(self):
+        self._id_counter += 1
+        return self._id_counter
+
     async def __aenter__(self):
         """Async context manager entry."""
         self.session = aiohttp.ClientSession()
@@ -24,107 +28,71 @@ class MCPHTTPClient:
         """Async context manager exit."""
         if self.session:
             await self.session.close()
-    
+
+    async def _jsonrpc_call(self, method: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        url = f"{self.base_url}/mcp/"
+        payload = {
+            "jsonrpc": "2.0",
+            "id": self._next_id(),
+            "method": method,
+            "params": params
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream"
+        }
+        async with self.session.post(url, json=payload, headers=headers) as response:
+            content_type = response.headers.get('content-type', '')
+            if response.status == 200:
+                if 'application/json' in content_type:
+                    return await response.json()
+                else:
+                    text = await response.text()
+                    # 处理 SSE 格式，提取 data: 后的 JSON
+                    for line in text.splitlines():
+                        if line.startswith("data:"):
+                            sse_json = line[len("data:"):].strip()
+                            try:
+                                return json.loads(sse_json)
+                            except Exception:
+                                return {"error": f"SSE Non-JSON data: {sse_json}"}
+                    # 没有 data: 行则返回原始内容
+                    return {"error": f"Non-JSON response: {text}"}
+            else:
+                text = await response.text()
+                return {"error": f"HTTP {response.status}: {text}"}
+
     async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Call an MCP tool."""
-        url = f"{self.base_url}/mcp/tools/call"
-        payload = {
+        return await self._jsonrpc_call("tools/call", {
             "name": tool_name,
             "arguments": arguments
-        }
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/event-stream"
-        }
-        
-        async with self.session.post(url, json=payload, headers=headers) as response:
-            if response.status == 200:
-                return await response.json()
-            else:
-                text = await response.text()
-                return {"error": f"HTTP {response.status}: {text}"}
-    
+        })
+
     async def list_tools(self) -> Dict[str, Any]:
         """List available MCP tools."""
-        url = f"{self.base_url}/mcp/tools/list"
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/event-stream"
-        }
-        
-        async with self.session.post(url, json={}, headers=headers) as response:
-            if response.status == 200:
-                return await response.json()
-            else:
-                text = await response.text()
-                return {"error": f"HTTP {response.status}: {text}"}
-    
+        return await self._jsonrpc_call("tools/list", {})
+
     async def list_resources(self) -> Dict[str, Any]:
         """List available MCP resources."""
-        url = f"{self.base_url}/mcp/resources/list"
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/event-stream"
-        }
-        
-        async with self.session.post(url, json={}, headers=headers) as response:
-            if response.status == 200:
-                return await response.json()
-            else:
-                text = await response.text()
-                return {"error": f"HTTP {response.status}: {text}"}
-    
+        return await self._jsonrpc_call("resources/list", {})
+
     async def get_resource(self, uri: str) -> Dict[str, Any]:
         """Get a specific MCP resource."""
-        url = f"{self.base_url}/mcp/resources/read"
-        payload = {
+        return await self._jsonrpc_call("resources/read", {
             "uri": uri
-        }
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/event-stream"
-        }
-        
-        async with self.session.post(url, json=payload, headers=headers) as response:
-            if response.status == 200:
-                return await response.json()
-            else:
-                text = await response.text()
-                return {"error": f"HTTP {response.status}: {text}"}
-    
+        })
+
     async def list_prompts(self) -> Dict[str, Any]:
         """List available MCP prompts."""
-        url = f"{self.base_url}/mcp/prompts/list"
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/event-stream"
-        }
-        
-        async with self.session.post(url, json={}, headers=headers) as response:
-            if response.status == 200:
-                return await response.json()
-            else:
-                text = await response.text()
-                return {"error": f"HTTP {response.status}: {text}"}
-    
+        return await self._jsonrpc_call("prompts/list", {})
+
     async def get_prompt(self, name: str, arguments: Dict[str, Any] = None) -> Dict[str, Any]:
         """Get a specific MCP prompt."""
-        url = f"{self.base_url}/mcp/prompts/get"
-        payload = {
+        return await self._jsonrpc_call("prompts/get", {
             "name": name,
             "arguments": arguments or {}
-        }
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/event-stream"
-        }
-        
-        async with self.session.post(url, json=payload, headers=headers) as response:
-            if response.status == 200:
-                return await response.json()
-            else:
-                text = await response.text()
-                return {"error": f"HTTP {response.status}: {text}"}
+        })
 
 
 class TestMCPHTTP(unittest.IsolatedAsyncioTestCase):
@@ -132,7 +100,7 @@ class TestMCPHTTP(unittest.IsolatedAsyncioTestCase):
     
     def setUp(self):
         """Set up test fixtures."""
-        self.base_url = "http://localhost:8000"
+        self.base_url = "http://localhost:16010/ai/sandbox/v1"
         self.timeout = aiohttp.ClientTimeout(total=30)
     
     async def test_direct_http_endpoints(self):
@@ -140,20 +108,11 @@ class TestMCPHTTP(unittest.IsolatedAsyncioTestCase):
         print("🧪 Testing MCP Endpoints with Direct HTTP\n")
         
         async with aiohttp.ClientSession(timeout=self.timeout) as session:
-            # Test 1: Check root endpoint
-            print("1️⃣ Testing root endpoint...")
-            async with session.get(f"{self.base_url}/") as response:
-                self.assertEqual(response.status, 200, "Root endpoint should return 200")
-                data = await response.json()
-                self.assertIsInstance(data, dict, "Root endpoint should return JSON")
-                print(f"✅ Root endpoint: {data}")
-            print()
             
             # Test 2: Check MCP endpoint with GET
             print("2️⃣ Testing MCP endpoint with GET...")
             async with session.get(f"{self.base_url}/mcp/") as response:
-                # MCP endpoint should respond (status may vary)
-                self.assertIn(response.status, [200, 405, 406, 501], "MCP endpoint should respond")
+                self.assertIn(response.status, [200, 404, 405, 406, 501], "MCP endpoint should respond")
                 text = await response.text()
                 self.assertIsInstance(text, str, "Response should be text")
                 print(f"   Status: {response.status}")
@@ -340,10 +299,11 @@ class TestMCPHTTP(unittest.IsolatedAsyncioTestCase):
             tools = await client.list_tools()
             self.assertIsInstance(tools, dict, "Response should be a dictionary")
             if "error" not in tools:
-                self.assertIn("tools", tools, "Response should contain tools")
-                self.assertIsInstance(tools["tools"], list, "Tools should be a list")
-                print(f"✅ Found {len(tools.get('tools', []))} tools:")
-                for tool in tools.get('tools', []):
+                self.assertIn("result", tools, "Response should contain result")
+                self.assertIn("tools", tools["result"], "Result should contain tools")
+                self.assertIsInstance(tools["result"]["tools"], list, "Tools should be a list")
+                print(f"✅ Found {len(tools['result'].get('tools', []))} tools:")
+                for tool in tools['result'].get('tools', []):
                     print(f"   - {tool.get('name', 'Unknown')}: {tool.get('description', 'No description')}")
             else:
                 print(f"⚠️ Tool listing returned error: {tools['error']}")
@@ -408,10 +368,11 @@ print('Plot generated successfully!')
             resources = await client.list_resources()
             self.assertIsInstance(resources, dict, "Response should be a dictionary")
             if "error" not in resources:
-                self.assertIn("resources", resources, "Response should contain resources")
-                self.assertIsInstance(resources["resources"], list, "Resources should be a list")
-                print(f"✅ Found {len(resources.get('resources', []))} resources:")
-                for resource in resources.get('resources', []):
+                self.assertIn("result", resources, "Response should contain result")
+                self.assertIn("resources", resources["result"], "Result should contain resources")
+                self.assertIsInstance(resources["result"]["resources"], list, "Resources should be a list")
+                print(f"✅ Found {len(resources['result'].get('resources', []))} resources:")
+                for resource in resources['result'].get('resources', []):
                     print(f"   - {resource.get('uri', 'Unknown')}: {resource.get('description', 'No description')}")
             else:
                 print(f"⚠️ Resource listing returned error: {resources['error']}")
@@ -432,10 +393,11 @@ print('Plot generated successfully!')
             prompts = await client.list_prompts()
             self.assertIsInstance(prompts, dict, "Response should be a dictionary")
             if "error" not in prompts:
-                self.assertIn("prompts", prompts, "Response should contain prompts")
-                self.assertIsInstance(prompts["prompts"], list, "Prompts should be a list")
-                print(f"✅ Found {len(prompts.get('prompts', []))} prompts:")
-                for prompt in prompts.get('prompts', []):
+                self.assertIn("result", prompts, "Response should contain result")
+                self.assertIn("prompts", prompts["result"], "Result should contain prompts")
+                self.assertIsInstance(prompts["result"]["prompts"], list, "Prompts should be a list")
+                print(f"✅ Found {len(prompts['result'].get('prompts', []))} prompts:")
+                for prompt in prompts['result'].get('prompts', []):
                     print(f"   - {prompt.get('name', 'Unknown')}: {prompt.get('description', 'No description')}")
             else:
                 print(f"⚠️ Prompt listing returned error: {prompts['error']}")

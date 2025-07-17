@@ -48,10 +48,10 @@ ENV PYTHONPATH="/app/src:$PYTHONPATH"
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/api/v1/health')"
+    CMD python -c "import requests; requests.get('http://localhost:16010/health')"
 
 # Expose port
-EXPOSE 8000
+EXPOSE 16010
 
 # Default command
 CMD ["python", "-m", "sandbox_mcp.main"]

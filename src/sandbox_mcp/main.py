@@ -1,25 +1,34 @@
 """Main application module for the sandbox MCP server."""
 
 import logging
-import asyncio
-import contextlib
+import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
+from .models import HealthCheck
+from .kernel_manager import kernel_manager
+from . import __version__ as MCP_VERSION
 from .config import settings
 from .api import router
-from .kernel_manager import kernel_manager
 from .mcp_server import mcp
-from . import __version__
+from .logger_config import setup_logger  # 日志初始化
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO if not settings.debug else logging.DEBUG,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+setup_logger()
+
 logger = logging.getLogger(__name__)
+
+
+def health_check() -> HealthCheck:
+    """Health check endpoint."""
+    return HealthCheck(
+        status="healthy",
+        version=MCP_VERSION,
+        active_sessions=len(kernel_manager.sessions),
+        uptime=time.time() - getattr(health_check, '_start_time', time.time())
+    )
+health_check._start_time = time.time()
 
 
 @asynccontextmanager
@@ -32,7 +41,7 @@ async def combined_lifespan(app: FastAPI):
     # Start MCP session manager
     async with mcp.session_manager.run():
         logger.info(f"Server started on {settings.host}:{settings.port}")
-        logger.info("MCP server mounted at /mcp")
+        logger.info("MCP server mounted at /ai/sandbox/v1/mcp")
         
         yield
     
@@ -50,7 +59,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Python Sandbox MCP Server",
         description="A secure Python code execution sandbox with MCP support",
-        version=__version__,
+        version=MCP_VERSION,
         lifespan=combined_lifespan,
         docs_url="/docs" if settings.debug else None,
         redoc_url="/redoc" if settings.debug else None
@@ -73,21 +82,26 @@ def create_app() -> FastAPI:
         )
     
     # Include API routes
-    app.include_router(router, prefix="/api/v1")
+    api_prefix = "/ai/sandbox/v1/api"
+    # 只为非 /health 路径加前缀，/health 直接挂载
+    app.include_router(router, prefix=api_prefix, tags=["API"])
+
+    app.add_api_route("/health", health_check, methods=["GET"], response_model=HealthCheck)
     
     # Mount MCP server
-    app.mount("/mcp", mcp_app)
+    mcp_prefix = "/ai/sandbox/v1/mcp"
+    app.mount(mcp_prefix, mcp_app)
     
     @app.get("/")
     async def root():
         """Root endpoint."""
         return {
             "name": "Python Sandbox MCP Server",
-            "version": __version__,
+            "version": MCP_VERSION,
             "status": "running",
             "docs": "/docs" if settings.debug else "disabled",
-            "mcp_endpoint": "/mcp",
-            "api_endpoint": "/api/v1"
+            "mcp_endpoint": mcp_prefix,
+            "api_endpoint": api_prefix,
         }
     
     return app

@@ -80,7 +80,7 @@ docker-build:
 	docker build -t sandbox-mcp .
 
 docker-run:
-	docker run -p 8000:8000 sandbox-mcp
+	docker run -p 16010:16010 sandbox-mcp
 
 docker-compose-up:
 	docker-compose up --build

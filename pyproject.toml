@@ -19,6 +19,7 @@ dependencies = [
     "matplotlib>=3.9.4",
     "numpy>=2.0.2",
     "mcp[cli]>=1.11.0",
+    "requests>=2.32.4",
 ]
 
 [project.optional-dependencies]

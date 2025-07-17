@@ -12,7 +12,7 @@ class TestMCPIntegration(unittest.IsolatedAsyncioTestCase):
     
     def setUp(self):
         """Set up test fixtures."""
-        self.base_url = "http://localhost:8000/mcp"
+        self.base_url = "http://localhost:16010/ai/sandbox/v1/mcp"
     
     async def test_basic_functionality(self):
         """Test basic MCP server functionality."""

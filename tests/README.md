@@ -145,7 +145,7 @@ uv add aiohttp
    ```bash
    python run.py --debug
    ```
-   服务器应该在 `http://localhost:8000` 运行
+   服务器应该在 `http://localhost:16010` 运行
 
 2. **Python 环境**
    - Python 3.8+
@@ -161,7 +161,7 @@ uv add aiohttp
 
 1. **连接错误**
    - 确保 MCP 服务器正在运行
-   - 检查端口 8000 是否可用
+   - 检查端口 16010 是否可用
    - 确认服务器地址正确
 
 2. **依赖错误**

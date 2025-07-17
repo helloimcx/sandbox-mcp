@@ -40,7 +40,7 @@ docker-compose up --build
 
 # Or build and run manually
 docker build -t sandbox-mcp .
-docker run -p 8000:8000 sandbox-mcp
+docker run -p 16010:16010 sandbox-mcp
 ```
 
 ## Configuration
@@ -60,7 +60,7 @@ vim .env
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `HOST` | `0.0.0.0` | Server host address |
-| `PORT` | `8000` | Server port |
+| `PORT` | `16010` | Server port |
 | `DEBUG` | `false` | Enable debug mode |
 | `API_KEY` | `None` | API key for authentication (optional) |
 | `MAX_KERNELS` | `10` | Maximum concurrent kernels |
@@ -73,7 +73,7 @@ vim .env
 ### Execute Code
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/execute" \
+curl -X POST "http://localhost:16010/api/v1/execute" \
   -H "Content-Type: application/json" \
   -d '{
     "code": "print('Hello, World!')\nimport matplotlib.pyplot as plt\nplt.plot([1,2,3], [1,4,9])\nplt.show()",
@@ -84,7 +84,7 @@ curl -X POST "http://localhost:8000/api/v1/execute" \
 ### With API Key Authentication
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/execute" \
+curl -X POST "http://localhost:16010/api/v1/execute" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your-api-key" \
   -d '{"code": "print('Hello, World!')"}'
@@ -93,13 +93,13 @@ curl -X POST "http://localhost:8000/api/v1/execute" \
 ### List Active Sessions
 
 ```bash
-curl "http://localhost:8000/api/v1/sessions"
+curl "http://localhost:16010/api/v1/sessions"
 ```
 
 ### Health Check
 
 ```bash
-curl "http://localhost:8000/api/v1/health"
+curl "http://localhost:16010/api/v1/health"
 ```
 
 ## Response Format
@@ -192,7 +192,7 @@ spec:
       - name: sandbox-mcp
         image: sandbox-mcp:latest
         ports:
-        - containerPort: 8000
+        - containerPort: 16010
         env:
         - name: API_KEY
           valueFrom:

@@ -10,7 +10,7 @@ from typing import AsyncGenerator, Dict, Any
 class SandboxClient:
     """Client for interacting with the sandbox MCP server."""
     
-    def __init__(self, base_url: str = "http://localhost:8000", api_key: str = None):
+    def __init__(self, base_url: str = "http://localhost:16010", api_key: str = None):
         self.base_url = base_url.rstrip('/')
         self.api_key = api_key
         self.session = None

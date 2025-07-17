@@ -1,11 +1,9 @@
 """MCP server implementation for Python sandbox."""
 
-import asyncio
 import json
-from typing import Dict, Any, Optional, AsyncGenerator
+from typing import Dict, Any, Optional
 from mcp.server.fastmcp import FastMCP
 from .kernel_manager import kernel_manager
-from .models import ExecuteRequest, TextOutput, ImageOutput, ErrorOutput
 
 
 # Create MCP server instance

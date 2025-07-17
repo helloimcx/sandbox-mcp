@@ -1,7 +1,6 @@
 """API routes for the sandbox MCP server."""
 
 import json
-import time
 from typing import Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Security
 from fastapi.responses import StreamingResponse
@@ -10,14 +9,12 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from .config import settings
 from .models import (
     ExecuteRequest, 
-    HealthCheck, 
     MessageType,
     TextOutput,
     ImageOutput,
     ErrorOutput
 )
 from .kernel_manager import kernel_manager
-from . import __version__
 
 router = APIRouter()
 security = HTTPBearer(auto_error=False)
@@ -35,17 +32,6 @@ def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(security
         raise HTTPException(status_code=401, detail="Invalid API key")
     
     return True
-
-
-@router.get("/health", response_model=HealthCheck)
-async def health_check() -> HealthCheck:
-    """Health check endpoint."""
-    return HealthCheck(
-        status="healthy",
-        version=__version__,
-        active_sessions=len(kernel_manager.sessions),
-        uptime=time.time() - getattr(health_check, '_start_time', time.time())
-    )
 
 
 @router.post("/execute")
@@ -163,6 +149,3 @@ async def _process_message(message) -> Dict[str, Any]:
     
     return None
 
-
-# Set start time for uptime calculation
-health_check._start_time = time.time()

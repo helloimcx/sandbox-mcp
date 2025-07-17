@@ -6,10 +6,10 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "16010:16010"
     environment:
       - HOST=0.0.0.0
-      - PORT=8000
+      - PORT=16010
       - DEBUG=false
       - MAX_KERNELS=10
       - KERNEL_TIMEOUT=300
@@ -20,7 +20,7 @@ services:
       - ./logs:/app/logs
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/api/v1/health')"]
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:16010/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
