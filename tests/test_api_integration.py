@@ -20,7 +20,7 @@ def test_execute_code():
     lines = resp.text.strip().split("\n")
     print(lines)
     assert len(lines) > 0
-
+    
 def test_list_sessions():
     resp = requests.get(f"{BASE_URL}/sessions", proxies={"http": None, "https": None})
     assert resp.status_code == 200

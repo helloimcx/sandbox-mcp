@@ -20,6 +20,9 @@ dependencies = [
     "numpy>=2.0.2",
     "mcp[cli]>=1.11.0",
     "requests>=2.32.4",
+    "pandas>=2.3.1",
+    "mplfonts>=0.0.10",
+    "concurrent-log-handler>=0.9.28",
 ]
 
 [project.optional-dependencies]

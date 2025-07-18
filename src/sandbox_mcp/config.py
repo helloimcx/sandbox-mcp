@@ -1,6 +1,5 @@
 """Configuration management for the sandbox MCP server."""
 
-import os
 from typing import Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings
@@ -26,6 +25,9 @@ class Settings(BaseSettings):
     # Resource limits
     max_execution_time: int = Field(default=30, env="MAX_EXECUTION_TIME")
     max_memory_mb: int = Field(default=512, env="MAX_MEMORY_MB")
+    
+    # Logging configuration
+    log_dir: str = Field(default="logs", env="LOG_DIR")
     
     class Config:
         env_file = ".env"

@@ -1,23 +1,29 @@
 """API routes for the sandbox MCP server."""
 
 import json
+import time
+import asyncio
 from typing import Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Security
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import logging
 
 from .config import settings
 from .models import (
-    ExecuteRequest, 
+    ExecuteRequest,
     MessageType,
     TextOutput,
     ImageOutput,
-    ErrorOutput
+    ErrorOutput,
+    ApiResponse,
+    ExecuteSyncResponse
 )
 from .kernel_manager import kernel_manager
 
 router = APIRouter()
 security = HTTPBearer(auto_error=False)
+logger = logging.getLogger(__name__)
 
 
 def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(security)) -> bool:
@@ -65,6 +71,81 @@ async def execute_code(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive"
         }
+    )
+
+
+@router.post("/execute_sync", response_model=ApiResponse)
+async def execute_code_sync(
+    request: ExecuteRequest,
+    _: bool = Depends(verify_api_key)
+) -> ApiResponse:
+    """同步执行 Python 代码，返回统一结构。"""
+    outputs = []
+    try:
+        # 获取 session 并执行代码，收集所有输出
+        session = await kernel_manager.get_or_create_session(request.session_id)
+        if not session.kernel_client:
+            logger.error(f"Kernel client not available for session_id={request.session_id}")
+            raise RuntimeError("Kernel client not available")
+        session.is_busy = True
+        session.execution_count += 1
+        logger.info(f"Executing code in session_id={session.session_id}, code={request.code}")
+        session.kernel_client.execute(request.code)
+        start_time = time.time()
+        execution_timeout = request.timeout or settings.max_execution_time
+        while True:
+            try:
+                reply = await asyncio.wait_for(
+                    session.kernel_client.get_iopub_msg(),
+                    timeout=1.0
+                )
+                msg_type = reply["msg_type"]
+                content = reply["content"]
+                logger.debug(f"Received msg_type={msg_type} for session_id={session.session_id}")
+                output_data = await _process_message(
+                    type("Msg", (), {"type": MessageType(msg_type), "content": content})()
+                )
+                if output_data:
+                    outputs.append(output_data)
+                if msg_type == "status" and content.get("execution_state") == "idle":
+                    logger.info(f"Execution finished for session_id={session.session_id}")
+                    break
+                if time.time() - start_time > execution_timeout:
+                    await session.kernel_manager.interrupt_kernel()
+                    logger.warning(f"Execution timeout for session_id={session.session_id}")
+                    break
+            except asyncio.TimeoutError:
+                if time.time() - start_time > execution_timeout:
+                    await session.kernel_manager.interrupt_kernel()
+                    logger.warning(f"Execution timeout (asyncio.TimeoutError) for session_id={session.session_id}")
+                    break
+                continue
+    except Exception as exc:
+        logger.error(f"Exception during code execution: {exc}")
+    finally:
+        session.is_busy = False
+        session.update_activity()
+        logger.info(f"Session {session.session_id} activity updated, is_busy={session.is_busy}")
+    outputs_text = []
+    outputs_image = []
+    outputs_error = []
+    for output in outputs:
+        if "text" in output:
+            outputs_text.append(output["text"])
+        if "image" in output:
+            outputs_image.append(output["image"])
+        if "error" in output:
+            outputs_error.append({
+                "error": output["error"],
+                "traceback": output.get("traceback", [])
+            })
+    logger.info(f"Execution result for session_id={session.session_id}:  texts={len(outputs_text)}, images={len(outputs_image)}, errors={len(outputs_error)}")
+    return ApiResponse(
+        data=ExecuteSyncResponse(
+            texts=outputs_text,
+            images=outputs_image,
+            errors=outputs_error
+        )
     )
 
 

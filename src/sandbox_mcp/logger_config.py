@@ -1,47 +1,110 @@
-"""日志配置模块，将日志输出到文件和控制台。"""
+import logging
+import os
+import sys
+from concurrent_log_handler import ConcurrentRotatingFileHandler
+from .config import settings
+from contextvars import ContextVar
+
+# Used to store request_id in contextvars
+request_id_ctx_var: ContextVar[str] = ContextVar("request_id", default="AI-SANDBOX")
+
+
+# Custom Formatter to handle missing attributes
+class RequestIDFormatter(logging.Formatter):
+    def format(self, record):
+        if not hasattr(record, "request_id"):
+            record.request_id = request_id_ctx_var.get()
+        return super().format(record)
+
+
+# Log filter to add request_id to records
+class RequestIDLogFilter(logging.Filter):
+    def filter(self, record):
+        record.request_id = request_id_ctx_var.get()
+        return True
 
 
 def setup_logger():
-    """初始化日志系统，分级别写入不同文件，并输出到控制台。"""
-    import logging
-    import os
-    from logging.handlers import RotatingFileHandler
+    # Create a logger
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
 
-    LOG_DIR = os.path.join(os.path.dirname(__file__), '../../logs')
-    os.makedirs(LOG_DIR, exist_ok=True)
-
-    LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s"
-
-    INFO_LOG = os.path.join(LOG_DIR, 'info.log')
-    ERROR_LOG = os.path.join(LOG_DIR, 'error.log')
-    WARN_LOG = os.path.join(LOG_DIR, 'warn.log')
-    SYS_LOG = os.path.join(LOG_DIR, 'sys.log')
-
-    info_handler = RotatingFileHandler(INFO_LOG, maxBytes=5*1024*1024, backupCount=5, encoding='utf-8')
-    info_handler.setLevel(logging.INFO)
-    info_handler.setFormatter(logging.Formatter(LOG_FORMAT))
-    info_handler.addFilter(lambda record: record.levelno == logging.INFO)
-
-    error_handler = RotatingFileHandler(ERROR_LOG, maxBytes=5*1024*1024, backupCount=5, encoding='utf-8')
-    error_handler.setLevel(logging.ERROR)
-    error_handler.setFormatter(logging.Formatter(LOG_FORMAT))
-    error_handler.addFilter(lambda record: record.levelno == logging.ERROR)
-
-    warn_handler = RotatingFileHandler(WARN_LOG, maxBytes=5*1024*1024, backupCount=5, encoding='utf-8')
-    warn_handler.setLevel(logging.WARNING)
-    warn_handler.setFormatter(logging.Formatter(LOG_FORMAT))
-    warn_handler.addFilter(lambda record: record.levelno == logging.WARNING)
-
-    sys_handler = RotatingFileHandler(SYS_LOG, maxBytes=10*1024*1024, backupCount=5, encoding='utf-8')
-    sys_handler.setLevel(logging.DEBUG)
-    sys_handler.setFormatter(logging.Formatter(LOG_FORMAT))
-
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(logging.Formatter(LOG_FORMAT))
-
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format=LOG_FORMAT,
-        handlers=[info_handler, error_handler, warn_handler, sys_handler, console_handler]
+    # Create a formatter, add request_id to log format
+    formatter = RequestIDFormatter(
+        "%(asctime)s - %(name)s - %(levelname)s - [%(request_id)s] - %(message)s - %(filename)s:%(lineno)d"
     )
+
+    # Check and create log directory
+    log_dir = settings.log_dir
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
+    # Create a handler for sys.log
+    sys_log_file_path = os.path.join(log_dir, "sys.log")
+    sys_file_handler = ConcurrentRotatingFileHandler(
+        sys_log_file_path,
+        mode="a",
+        maxBytes=5 * 1024 * 1024,
+        backupCount=30,
+        encoding="utf-8",
+    )
+    sys_file_handler.setLevel(logging.INFO)
+    sys_file_handler.setFormatter(formatter)
+    sys_file_handler.addFilter(RequestIDLogFilter())
+
+    # Create a handler for info.log
+    info_log_file_path = os.path.join(log_dir, "info.log")
+    info_file_handler = ConcurrentRotatingFileHandler(
+        info_log_file_path,
+        mode="a",
+        maxBytes=5 * 1024 * 1024,
+        backupCount=30,
+        encoding="utf-8",
+    )
+    info_file_handler.setLevel(logging.INFO)
+    info_file_handler.setFormatter(formatter)
+    info_file_handler.addFilter(RequestIDLogFilter())
+    info_file_handler.addFilter(lambda record: record.levelno == logging.INFO)
+
+    # Create a handler for warn.log
+    warn_log_file_path = os.path.join(log_dir, "warn.log")
+    warn_file_handler = ConcurrentRotatingFileHandler(
+        warn_log_file_path,
+        mode="a",
+        maxBytes=5 * 1024 * 1024,
+        backupCount=30,
+        encoding="utf-8",
+    )
+    warn_file_handler.setLevel(logging.WARNING)
+    warn_file_handler.setFormatter(formatter)
+    warn_file_handler.addFilter(RequestIDLogFilter())
+    warn_file_handler.addFilter(lambda record: record.levelno == logging.WARNING)
+
+    # Create a handler for error.log
+    error_log_file_path = os.path.join(log_dir, "error.log")
+    error_file_handler = ConcurrentRotatingFileHandler(
+        error_log_file_path,
+        mode="a",
+        maxBytes=5 * 1024 * 1024,
+        backupCount=30,
+        encoding="utf-8",
+    )
+    error_file_handler.setLevel(logging.ERROR)
+    error_file_handler.setFormatter(formatter)
+    error_file_handler.addFilter(RequestIDLogFilter())
+    error_file_handler.addFilter(lambda record: record.levelno == logging.ERROR)
+
+    # Create a console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.DEBUG)
+    console_handler.setFormatter(formatter)
+    console_handler.addFilter(RequestIDLogFilter())
+
+    # Clear existing handlers and add ours
+    logger.handlers = [
+        sys_file_handler,
+        info_file_handler,
+        warn_file_handler,
+        error_file_handler,
+        console_handler,
+    ]

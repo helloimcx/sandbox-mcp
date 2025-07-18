@@ -9,7 +9,7 @@ from jupyter_client import AsyncKernelClient
 import logging
 
 from .config import settings
-from .models import StreamMessage, MessageType, ExecutionStatus
+from .models import StreamMessage, MessageType
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,31 @@ class KernelSession:
         self.kernel_client = self.kernel_manager.client()
         self.kernel_client.start_channels()
         await self.kernel_client.wait_for_ready()
+        
+        # 重新实现字体配置，确保matplotlib图片能被正确捕获
+        font_setup_code = """import matplotlib.pyplot as plt
+from mplfonts import use_font
+
+# 配置中文字体支持
+try:
+    use_font('Noto Sans CJK SC')
+    plt.rcParams['axes.unicode_minus'] = False
+except Exception:
+    plt.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
+    plt.rcParams['axes.unicode_minus'] = False
+"""
+        
+        try:
+            # 执行字体配置代码（静默执行）并等待完成
+            msg_id = self.kernel_client.execute(font_setup_code, silent=True)
+            while True:
+                reply = await self.kernel_client.get_iopub_msg()
+                if reply['msg_type'] == 'status' and reply['content'].get('execution_state') == 'idle':
+                    break
+            logger.info(f"Font configuration executed for kernel session {self.session_id}")
+        except Exception as e:
+            logger.warning(f"Failed to execute font configuration for session {self.session_id}: {e}")
+        
         logger.info(f"Kernel session {self.session_id} started")
     
     async def stop(self) -> None:

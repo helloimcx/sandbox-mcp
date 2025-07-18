@@ -1,5 +1,5 @@
 # Multi-stage build for Python Sandbox MCP Server
-FROM python:3.11-slim as builder
+FROM python:3.11-slim AS builder
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
@@ -16,7 +16,7 @@ COPY README.md .
 RUN uv sync --frozen --no-dev
 
 # Production stage
-FROM python:3.11-slim as production
+FROM python:3.11-slim AS production
 
 # Install system dependencies for Jupyter
 RUN apt-get update && apt-get install -y \
@@ -42,13 +42,13 @@ RUN chown -R sandbox:sandbox /app && chown -R sandbox:sandbox /home/sandbox
 # Switch to non-root user
 USER sandbox
 
+# Initialize mplfonts for Chinese font support
+RUN /app/.venv/bin/mplfonts init || echo "mplfonts init failed, continuing..."
+
 # Add virtual environment to PATH
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH="/app/src:$PYTHONPATH"
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:16010/health')"
 
 # Expose port
 EXPOSE 16010

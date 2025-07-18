@@ -81,3 +81,15 @@ class HealthCheck(BaseModel):
     version: str
     active_sessions: int
     uptime: float
+
+
+class ApiResponse(BaseModel):
+    resultCode: int = 0
+    resultMsg: str = "success"
+    data: Optional[Any] = None
+
+
+class ExecuteSyncResponse(BaseModel):
+    texts: List[str] = []
+    images: List[str] = []
+    errors: List[Dict[str, Any]] = []

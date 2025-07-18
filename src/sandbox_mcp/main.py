@@ -1,34 +1,23 @@
 """Main application module for the sandbox MCP server."""
 
 import logging
-import time
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+import time
+import uuid
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
-from .models import HealthCheck
-from .kernel_manager import kernel_manager
-from . import __version__ as MCP_VERSION
 from .config import settings
 from .api import router
+from .kernel_manager import kernel_manager
 from .mcp_server import mcp
-from .logger_config import setup_logger  # 日志初始化
+from . import __version__
+from .logger_config import setup_logger, request_id_ctx_var  # 日志初始化
 
 setup_logger()
 
 logger = logging.getLogger(__name__)
-
-
-def health_check() -> HealthCheck:
-    """Health check endpoint."""
-    return HealthCheck(
-        status="healthy",
-        version=MCP_VERSION,
-        active_sessions=len(kernel_manager.sessions),
-        uptime=time.time() - getattr(health_check, '_start_time', time.time())
-    )
-health_check._start_time = time.time()
 
 
 @asynccontextmanager
@@ -59,7 +48,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Python Sandbox MCP Server",
         description="A secure Python code execution sandbox with MCP support",
-        version=MCP_VERSION,
+        version=__version__,
         lifespan=combined_lifespan,
         docs_url="/docs" if settings.debug else None,
         redoc_url="/redoc" if settings.debug else None
@@ -83,10 +72,7 @@ def create_app() -> FastAPI:
     
     # Include API routes
     api_prefix = "/ai/sandbox/v1/api"
-    # 只为非 /health 路径加前缀，/health 直接挂载
     app.include_router(router, prefix=api_prefix, tags=["API"])
-
-    app.add_api_route("/health", health_check, methods=["GET"], response_model=HealthCheck)
     
     # Mount MCP server
     mcp_prefix = "/ai/sandbox/v1/mcp"
@@ -97,7 +83,7 @@ def create_app() -> FastAPI:
         """Root endpoint."""
         return {
             "name": "Python Sandbox MCP Server",
-            "version": MCP_VERSION,
+            "version": __version__,
             "status": "running",
             "docs": "/docs" if settings.debug else "disabled",
             "mcp_endpoint": mcp_prefix,
@@ -108,6 +94,30 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+@app.middleware("http")
+async def add_request_id_middleware(request: Request, call_next):
+    if request.url.path == "/metrics":
+        return await call_next(request)
+
+    # 获取 request_id，或者生成一个新的 UUID
+    request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    request_id_ctx_var.set(request_id)  # 设置 request_id 到 contextvars
+
+    start_time = time.time()
+    logging.info(f"Start request {request_id}")  # 日志记录请求开始
+
+    # 处理请求
+    response = await call_next(request)
+
+    process_time = time.time() - start_time
+    formatted_process_time = f"{process_time:.4f}"  # 格式化为4位小数
+
+    logging.info(
+        f"End request {request_id} - Duration: {formatted_process_time} seconds"
+    )
+
+    return response
 
 
 if __name__ == "__main__":
