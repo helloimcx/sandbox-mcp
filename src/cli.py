@@ -3,8 +3,8 @@
 import argparse
 import sys
 import uvicorn
-from .config import settings
-from . import __version__
+from config.config import settings
+from .sandbox_mcp import __version__
 
 
 def main() -> None:
@@ -97,7 +97,7 @@ Examples:
     
     try:
         uvicorn.run(
-            "sandbox_mcp.main:app",
+            "main:app",
             host=args.host,
             port=args.port,
             reload=args.debug,

@@ -4,8 +4,8 @@ import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from sandbox_mcp.kernel_manager import KernelSession, KernelManagerService
-from sandbox_mcp.models import MessageType
+from services.kernel_manager import KernelSession, KernelManagerService
+from schema.models import MessageType
 
 
 class TestKernelSession:

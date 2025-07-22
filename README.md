@@ -29,7 +29,7 @@ uv sync
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Start the server
-python -m sandbox_mcp.main
+python -m main
 ```
 
 ### Using Docker
@@ -248,7 +248,7 @@ Enable debug mode for detailed logging:
 
 ```bash
 export DEBUG=true
-python -m sandbox_mcp.main
+python -m main
 ```
 
 ## Contributing

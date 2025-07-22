@@ -8,12 +8,12 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
-from .config import settings
-from .api import router
-from .kernel_manager import kernel_manager
-from .mcp_server import mcp
-from . import __version__
-from .logger_config import setup_logger, request_id_ctx_var  # 日志初始化
+from config.config import settings
+from api.api import router
+from services.kernel_manager import kernel_manager
+from sandbox_mcp.mcp_server import mcp
+from sandbox_mcp import __version__
+from config.logger_config import setup_logger, request_id_ctx_var  # 日志初始化
 
 setup_logger()
 
@@ -78,9 +78,9 @@ def create_app() -> FastAPI:
     mcp_prefix = "/ai/sandbox/v1/mcp"
     app.mount(mcp_prefix, mcp_app)
     
-    @app.get("/")
-    async def root():
-        """Root endpoint."""
+    @app.get("/health")
+    async def health():
+        """Health check endpoint."""
         return {
             "name": "Python Sandbox MCP Server",
             "version": __version__,
@@ -97,7 +97,7 @@ app = create_app()
 
 @app.middleware("http")
 async def add_request_id_middleware(request: Request, call_next):
-    if request.url.path == "/metrics":
+    if request.url.path == "/metrics" or request.url.path == "/health":
         return await call_next(request)
 
     # 获取 request_id，或者生成一个新的 UUID
@@ -124,7 +124,7 @@ if __name__ == "__main__":
     import uvicorn
     
     uvicorn.run(
-        "sandbox_mcp.main:app",
+        "main:app",
         host=settings.host,
         port=settings.port,
         reload=settings.debug,

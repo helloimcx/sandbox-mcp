@@ -1,8 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch
-from src.sandbox_mcp.main import create_app
-from src.sandbox_mcp.config import settings
+from main import create_app
+from config.config import settings
 
 @pytest.fixture
 def client():
@@ -14,7 +14,7 @@ def mock_kernel_manager():
     with patch('src.sandbox_mcp.api.kernel_manager') as mock:
         mock.sessions = {}
         async def mock_execute_code(*args, **kwargs):
-            from src.sandbox_mcp.models import StreamMessage, MessageType
+            from schema.models import StreamMessage, MessageType
             yield StreamMessage(type=MessageType.STREAM, content={'text': 'hello'}, timestamp=0)
         mock.execute_code = mock_execute_code
         mock.get_session_info = lambda: {}
@@ -33,7 +33,7 @@ class TestHealth:
 class TestExecute:
     def test_execute_code(self, client, mock_kernel_manager):
         async def mock_execute(*args, **kwargs):
-            from src.sandbox_mcp.models import StreamMessage, MessageType
+            from schema.models import StreamMessage, MessageType
             yield StreamMessage(type=MessageType.STREAM, content={'text': 'hello'}, timestamp=0)
         mock_kernel_manager.execute_code.return_value = mock_execute()
         resp = client.post('/ai/sandbox/v1/api/execute', json={'code': "print('hello')"})

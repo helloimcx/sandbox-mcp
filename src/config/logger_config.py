@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 from concurrent_log_handler import ConcurrentRotatingFileHandler
-from .config import settings
+from config.config import settings
 from contextvars import ContextVar
 
 # Used to store request_id in contextvars

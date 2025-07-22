@@ -9,9 +9,11 @@ from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import logging
 
-from .config import settings
-from .models import (
+from config.config import settings
+from schema.models import (
     ExecuteRequest,
+    CreateSessionRequest,
+    CreateSessionResponse,
     MessageType,
     TextOutput,
     ImageOutput,
@@ -19,7 +21,7 @@ from .models import (
     ApiResponse,
     ExecuteSyncResponse
 )
-from .kernel_manager import kernel_manager
+from services.kernel_manager import kernel_manager
 
 router = APIRouter()
 security = HTTPBearer(auto_error=False)
@@ -189,6 +191,32 @@ async def interrupt_session(
         await session.kernel_manager.interrupt_kernel()
     
     return {"message": f"Session {session_id} interrupted"}
+
+
+@router.post("/sessions", response_model=ApiResponse)
+async def create_session(
+    request: CreateSessionRequest,
+    _: bool = Depends(verify_api_key)
+) -> ApiResponse:
+    """Create a new session with optional file downloads."""
+    try:
+        session, downloaded_files, errors = await kernel_manager.create_session_with_files(
+            session_id=request.session_id,
+            file_urls=request.file_urls,
+            timeout=request.timeout or 30
+        )
+        
+        response_data = CreateSessionResponse(
+            session_id=session.session_id,
+            working_directory=session.kernel_manager.cwd,
+            downloaded_files=downloaded_files,
+            errors=errors
+        )
+        
+        return ApiResponse(data=response_data)
+    except Exception as e:
+        logger.error(f"Failed to create session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 async def _process_message(message) -> Dict[str, Any]:

@@ -3,76 +3,17 @@
 import asyncio
 import time
 import uuid
-from typing import Dict, Optional, AsyncGenerator
+import os
+from typing import Dict, Optional, AsyncGenerator, List, Tuple
 from jupyter_client.manager import AsyncKernelManager
-from jupyter_client import AsyncKernelClient
+from .kernel_session import KernelSession
 import logging
 
-from .config import settings
-from .models import StreamMessage, MessageType
+from config.config import settings
+from schema.models import StreamMessage, MessageType
+from utils.file_utils import download_file
 
 logger = logging.getLogger(__name__)
-
-
-class KernelSession:
-    """Represents a kernel session."""
-    
-    def __init__(self, session_id: str, kernel_manager: AsyncKernelManager):
-        self.session_id = session_id
-        self.kernel_manager = kernel_manager
-        self.kernel_client: Optional[AsyncKernelClient] = None
-        self.created_at = time.time()
-        self.last_activity = time.time()
-        self.is_busy = False
-        self.execution_count = 0
-    
-    async def start(self) -> None:
-        """Start the kernel and client."""
-        await self.kernel_manager.start_kernel()
-        self.kernel_client = self.kernel_manager.client()
-        self.kernel_client.start_channels()
-        await self.kernel_client.wait_for_ready()
-        
-        # 重新实现字体配置，确保matplotlib图片能被正确捕获
-        font_setup_code = """import matplotlib.pyplot as plt
-from mplfonts import use_font
-
-# 配置中文字体支持
-try:
-    use_font('Noto Sans CJK SC')
-    plt.rcParams['axes.unicode_minus'] = False
-except Exception:
-    plt.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
-    plt.rcParams['axes.unicode_minus'] = False
-"""
-        
-        try:
-            # 执行字体配置代码（静默执行）并等待完成
-            msg_id = self.kernel_client.execute(font_setup_code, silent=True)
-            while True:
-                reply = await self.kernel_client.get_iopub_msg()
-                if reply['msg_type'] == 'status' and reply['content'].get('execution_state') == 'idle':
-                    break
-            logger.info(f"Font configuration executed for kernel session {self.session_id}")
-        except Exception as e:
-            logger.warning(f"Failed to execute font configuration for session {self.session_id}: {e}")
-        
-        logger.info(f"Kernel session {self.session_id} started")
-    
-    async def stop(self) -> None:
-        """Stop the kernel and client."""
-        if self.kernel_client:
-            self.kernel_client.stop_channels()
-        await self.kernel_manager.shutdown_kernel()
-        logger.info(f"Kernel session {self.session_id} stopped")
-    
-    def update_activity(self) -> None:
-        """Update last activity timestamp."""
-        self.last_activity = time.time()
-    
-    def is_idle_timeout(self) -> bool:
-        """Check if session has timed out."""
-        return time.time() - self.last_activity > settings.kernel_timeout
 
 
 class KernelManagerService:
@@ -102,13 +43,24 @@ class KernelManagerService:
         self.sessions.clear()
         logger.info("Kernel manager service stopped")
     
-    async def get_or_create_session(self, session_id: Optional[str] = None) -> KernelSession:
-        """Get existing session or create a new one."""
-        if session_id and session_id in self.sessions:
-            session = self.sessions[session_id]
-            session.update_activity()
-            return session
+
+    
+    async def create_session_with_files(
+        self, 
+        session_id: Optional[str] = None,
+        file_urls: Optional[List[str]] = None,
+        timeout: int = 30
+    ) -> Tuple[KernelSession, List[str], List[str]]:
+        """Create a new session and download files.
         
+        Args:
+            session_id: Optional session ID
+            file_urls: List of file URLs to download
+            timeout: Download timeout in seconds
+            
+        Returns:
+            Tuple of (session, downloaded_files, errors)
+        """
         # Check if we've reached the maximum number of kernels
         if len(self.sessions) >= settings.max_kernels:
             # Remove the oldest idle session
@@ -116,19 +68,45 @@ class KernelManagerService:
         
         # Create new session
         new_session_id = session_id or str(uuid.uuid4())
+        # Create unique working directory for the session
+        session_dir = os.path.join('/tmp/sandbox_sessions', new_session_id)
+        os.makedirs(session_dir, exist_ok=True)
         kernel_manager = AsyncKernelManager()
+        kernel_manager.cwd = session_dir
         session = KernelSession(new_session_id, kernel_manager)
+        
+        downloaded_files = []
+        errors = []
+        
+        # Download files if provided
+        if file_urls:
+            for url in file_urls:
+                filename, error = await download_file(url, session_dir, timeout, verify_ssl=False)
+                if error:
+                    errors.append(error)
+                else:
+                    downloaded_files.append(filename)
         
         try:
             await session.start()
             self.sessions[new_session_id] = session
-            logger.info(f"Created new kernel session: {new_session_id}")
-            return session
+            logger.info(f"Created new kernel session: {new_session_id} with cwd: {session_dir}")
+            return session, downloaded_files, errors
         except Exception as e:
             logger.error(f"Failed to create kernel session: {e}")
             await session.stop()
             raise
     
+    async def get_or_create_session(self, session_id: Optional[str] = None) -> KernelSession:
+        """Get existing session or create a new one."""
+        if session_id and session_id in self.sessions:
+            session = self.sessions[session_id]
+            session.update_activity()
+            return session
+        
+        session, _, _ = await self.create_session_with_files(session_id)
+        return session
+
     async def execute_code(
         self, 
         code: str, 

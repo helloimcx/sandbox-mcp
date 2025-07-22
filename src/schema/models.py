@@ -32,6 +32,21 @@ class ExecuteRequest(BaseModel):
     variables: Optional[Dict[str, Any]] = Field(None, description="Variables to inject")
 
 
+class CreateSessionRequest(BaseModel):
+    """Request model for creating session with file downloads."""
+    session_id: Optional[str] = Field(None, description="Optional session ID")
+    file_urls: Optional[List[str]] = Field(None, description="List of file URLs to download")
+    timeout: Optional[int] = Field(30, description="Download timeout in seconds")
+
+
+class CreateSessionResponse(BaseModel):
+    """Response model for session creation."""
+    session_id: str = Field(..., description="Created session ID")
+    working_directory: str = Field(..., description="Session working directory")
+    downloaded_files: List[str] = Field(default_factory=list, description="List of downloaded file names")
+    errors: List[str] = Field(default_factory=list, description="Download errors if any")
+
+
 class StreamMessage(BaseModel):
     """Stream message model."""
     type: MessageType

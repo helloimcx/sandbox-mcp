@@ -3,7 +3,7 @@
 import json
 from typing import Dict, Any, Optional
 from mcp.server.fastmcp import FastMCP
-from .kernel_manager import kernel_manager
+from services.kernel_manager import kernel_manager
 
 
 # Create MCP server instance
@@ -47,7 +47,7 @@ async def _execute_code_async(
 ) -> Dict[str, Any]:
     """Async helper for code execution."""
     try:
-        from .models import MessageType
+        from ..schema.models import MessageType
         
         # Collect all output
         output_parts = []
@@ -205,3 +205,41 @@ def code_execution_prompt(
     prompt += "\n\nThe code will be executed in a secure sandbox environment with access to common Python libraries like numpy, matplotlib, etc."
     
     return prompt
+
+
+@mcp.tool()
+async def create_session_with_files(
+    session_id: str = None,
+    file_urls: list[str] = None,
+    timeout: int = 30
+) -> dict:
+    """
+    Create a new session with optional file downloads.
+    
+    Args:
+        session_id: Optional session ID. If not provided, a random one will be generated.
+        file_urls: List of file URLs to download to the session's working directory.
+        timeout: Timeout in seconds for each file download (default: 30).
+    
+    Returns:
+        Dictionary containing session info, downloaded files, and any errors.
+    """
+    try:
+        session, downloaded_files, errors = await kernel_manager.create_session_with_files(
+            session_id=session_id,
+            file_urls=file_urls or [],
+            timeout=timeout
+        )
+        
+        return {
+            "session_id": session.session_id,
+            "working_directory": session.kernel_manager.cwd,
+            "downloaded_files": downloaded_files,
+            "errors": errors,
+            "status": "success"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e)
+        }

@@ -54,4 +54,4 @@ ENV PYTHONPATH="/app/src:$PYTHONPATH"
 EXPOSE 16010
 
 # Default command
-CMD ["python", "-m", "sandbox_mcp.main"]
+CMD ["python", "-m", "main"]
