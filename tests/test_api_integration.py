@@ -100,6 +100,7 @@ def test_create_session_with_specific_id():
     list_resp = requests.get(f"{BASE_URL}/sessions", proxies={"http": None, "https": None})
     assert list_resp.status_code == 200
     list_data = list_resp.json()
+    print(list_data)
     
     # 检查会话列表中是否包含我们创建的会话
     assert "sessions" in list_data

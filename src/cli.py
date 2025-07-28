@@ -4,7 +4,7 @@ import argparse
 import sys
 import uvicorn
 from config.config import settings
-from .sandbox_mcp import __version__
+from sandbox_mcp import __version__
 
 
 def main() -> None:
