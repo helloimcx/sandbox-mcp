@@ -328,6 +328,42 @@ class KernelManagerService:
             }
             for session_id, session in self.sessions.items()
         }
+    
+    def get_session_detail(self, session_id: str) -> Optional[Dict]:
+        """Get detailed information about a specific session including file list."""
+        if session_id not in self.sessions:
+            return None
+        
+        session = self.sessions[session_id]
+        session_dir = session.kernel_manager.cwd
+        
+        # Get file list from session config
+        session_config = SessionFileConfig(session_dir)
+        files_info = []
+        
+        for file_id, filename in session_config.get_all_files().items():
+            file_path = os.path.join(session_dir, filename)
+            file_exists = os.path.exists(file_path)
+            file_size = os.path.getsize(file_path) if file_exists else 0
+            
+            files_info.append({
+                "id": file_id,
+                "filename": filename,
+                "exists": file_exists,
+                "size": file_size,
+                "path": file_path
+            })
+        
+        return {
+            "session_id": session_id,
+            "created_at": session.created_at,
+            "last_activity": session.last_activity,
+            "is_busy": session.is_busy,
+            "execution_count": session.execution_count,
+            "working_directory": session_dir,
+            "files": files_info,
+            "total_files": len(files_info)
+        }
 
 
 # Global kernel manager instance

@@ -162,6 +162,20 @@ async def list_sessions(
     }
 
 
+@router.get("/sessions/{session_id}")
+async def get_session_detail(
+    session_id: str,
+    _: bool = Depends(verify_api_key)
+) -> Dict[str, Any]:
+    """Get detailed information about a specific session including file list."""
+    session_detail = kernel_manager.get_session_detail(session_id)
+    
+    if session_detail is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    return session_detail
+
+
 @router.delete("/sessions/{session_id}")
 async def terminate_session(
     session_id: str,
