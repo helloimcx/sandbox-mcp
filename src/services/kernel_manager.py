@@ -10,8 +10,9 @@ from .kernel_session import KernelSession
 import logging
 
 from config.config import settings
-from schema.models import StreamMessage, MessageType
+from schema.models import StreamMessage, MessageType, FileItem
 from utils.file_utils import download_file
+from utils.session_config import SessionFileConfig
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ class KernelManagerService:
         self, 
         session_id: Optional[str] = None,
         file_urls: Optional[List[str]] = None,
+        files: Optional[List[FileItem]] = None,
         timeout: int = 30
     ) -> Tuple[KernelSession, List[str], List[str]]:
         """Create a new session and download files.
@@ -78,7 +80,10 @@ class KernelManagerService:
         downloaded_files = []
         errors = []
         
-        # Download files if provided
+        # Initialize session file config
+        session_config = SessionFileConfig(session_dir)
+        
+        # Download files from file_urls (legacy support)
         if file_urls:
             for url in file_urls:
                 filename, error = await download_file(url, session_dir, timeout, verify_ssl=False)
@@ -86,6 +91,36 @@ class KernelManagerService:
                     errors.append(error)
                 else:
                     downloaded_files.append(filename)
+        
+        # Download files from files list with ID management
+        if files:
+            for file_item in files:
+                file_id = file_item.id
+                file_url = file_item.url
+                
+                # Check if file already exists
+                if session_config.has_file(file_id):
+                    existing_filename = session_config.get_filename(file_id)
+                    file_path = os.path.join(session_dir, existing_filename)
+                    
+                    # Verify file still exists on disk
+                    if os.path.exists(file_path):
+                        downloaded_files.append(existing_filename)
+                        logger.info(f"File {file_id} already exists: {existing_filename}")
+                        continue
+                    else:
+                        # File was deleted, remove from config and re-download
+                        session_config.remove_file(file_id)
+                        logger.warning(f"File {file_id} was deleted from disk, re-downloading")
+                
+                # Download new file
+                filename, error = await download_file(file_url, session_dir, timeout, verify_ssl=False)
+                if error:
+                    errors.append(f"Failed to download file {file_id}: {error}")
+                else:
+                    downloaded_files.append(filename)
+                    session_config.add_file(file_id, filename)
+                    logger.info(f"Downloaded new file {file_id}: {filename}")
         
         try:
             await session.start()
@@ -104,7 +139,7 @@ class KernelManagerService:
             session.update_activity()
             return session
         
-        session, _, _ = await self.create_session_with_files(session_id)
+        session, _, _ = await self.create_session_with_files(session_id=session_id)
         return session
 
     async def execute_code(

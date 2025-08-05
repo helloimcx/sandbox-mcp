@@ -203,6 +203,7 @@ async def create_session(
         session, downloaded_files, errors = await kernel_manager.create_session_with_files(
             session_id=request.session_id,
             file_urls=request.file_urls,
+            files=request.files,
             timeout=request.timeout or 30
         )
         

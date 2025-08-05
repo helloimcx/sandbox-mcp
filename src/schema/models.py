@@ -32,10 +32,17 @@ class ExecuteRequest(BaseModel):
     variables: Optional[Dict[str, Any]] = Field(None, description="Variables to inject")
 
 
+class FileItem(BaseModel):
+    """File item with URL and ID."""
+    url: str = Field(..., description="File URL to download")
+    id: str = Field(..., description="Unique file identifier")
+
+
 class CreateSessionRequest(BaseModel):
     """Request model for creating session with file downloads."""
     session_id: Optional[str] = Field(None, description="Optional session ID")
     file_urls: Optional[List[str]] = Field(None, description="List of file URLs to download")
+    files: Optional[List[FileItem]] = Field(None, description="List of files with URL and ID")
     timeout: Optional[int] = Field(30, description="Download timeout in seconds")
 
 
