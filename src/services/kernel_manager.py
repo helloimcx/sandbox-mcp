@@ -46,6 +46,70 @@ class KernelManagerService:
     
 
     
+    async def _process_existing_files(self, session_config: SessionFileConfig, session_dir: str) -> List[str]:
+        """Process existing files and return list of valid files."""
+        downloaded_files = []
+        existing_files = session_config.get_all_files()
+        
+        for file_id, filename in existing_files.items():
+            file_path = os.path.join(session_dir, filename)
+            if os.path.exists(file_path):
+                downloaded_files.append(filename)
+            else:
+                # File was deleted, remove from config
+                session_config.remove_file(file_id)
+                logger.warning(f"File {file_id} was deleted from disk: {filename}")
+        
+        return downloaded_files
+    
+    async def _process_file_urls(self, file_urls: List[str], session_dir: str, timeout: int, downloaded_files: List[str]) -> List[str]:
+        """Process legacy file URLs and return errors."""
+        errors = []
+        for url in file_urls:
+            filename, error = await download_file(url, session_dir, timeout, verify_ssl=False)
+            if error:
+                errors.append(error)
+            else:
+                if filename not in downloaded_files:
+                    downloaded_files.append(filename)
+        return errors
+    
+    async def _process_files_with_id(self, files: List[FileItem], session_config: SessionFileConfig, 
+                                   session_dir: str, timeout: int, downloaded_files: List[str]) -> List[str]:
+        """Process files with ID management and return errors."""
+        errors = []
+        for file_item in files:
+            file_id = file_item.id
+            file_url = file_item.url
+            
+            # Check if file already exists
+            if session_config.has_file(file_id):
+                existing_filename = session_config.get_filename(file_id)
+                file_path = os.path.join(session_dir, existing_filename)
+                
+                # Verify file still exists on disk
+                if os.path.exists(file_path):
+                    if existing_filename not in downloaded_files:
+                        downloaded_files.append(existing_filename)
+                    logger.info(f"File {file_id} already exists: {existing_filename}")
+                    continue
+                else:
+                    # File was deleted, remove from config and re-download
+                    session_config.remove_file(file_id)
+                    logger.warning(f"File {file_id} was deleted from disk, re-downloading")
+            
+            # Download new file
+            filename, error = await download_file(file_url, session_dir, timeout, verify_ssl=False)
+            if error:
+                errors.append(f"Failed to download file {file_id}: {error}")
+            else:
+                if filename not in downloaded_files:
+                    downloaded_files.append(filename)
+                session_config.add_file(file_id, filename)
+                logger.info(f"Downloaded new file {file_id}: {filename}")
+        
+        return errors
+    
     async def create_session_with_files(
         self, 
         session_id: Optional[str] = None,
@@ -58,69 +122,58 @@ class KernelManagerService:
         Args:
             session_id: Optional session ID
             file_urls: List of file URLs to download
+            files: List of files with URL and ID
             timeout: Download timeout in seconds
             
         Returns:
             Tuple of (session, downloaded_files, errors)
         """
-        # Check if we've reached the maximum number of kernels
+        new_session_id = session_id or str(uuid.uuid4())
+        session_dir = os.path.join('/tmp/sandbox_sessions', new_session_id)
+        
+        # Check if session already exists
+        if session_id and session_id in self.sessions:
+            existing_session = self.sessions[session_id]
+            existing_session.update_activity()
+            logger.info(f"Session {session_id} already exists, checking for new files to download")
+            
+            # Use existing session directory
+            session_dir = existing_session.kernel_manager.cwd
+            session_config = SessionFileConfig(session_dir)
+            
+            # Process existing files
+            downloaded_files = await self._process_existing_files(session_config, session_dir)
+            
+            # Process new files
+            errors = []
+            if file_urls:
+                errors.extend(await self._process_file_urls(file_urls, session_dir, timeout, downloaded_files))
+            
+            if files:
+                errors.extend(await self._process_files_with_id(files, session_config, session_dir, timeout, downloaded_files))
+            
+            return existing_session, downloaded_files, errors
+        
+        # Create new session if it doesn't exist
         if len(self.sessions) >= settings.max_kernels:
-            # Remove the oldest idle session
             await self._cleanup_oldest_session()
         
-        # Create new session
-        new_session_id = session_id or str(uuid.uuid4())
         # Create unique working directory for the session
-        session_dir = os.path.join('/tmp/sandbox_sessions', new_session_id)
         os.makedirs(session_dir, exist_ok=True)
         kernel_manager = AsyncKernelManager()
         kernel_manager.cwd = session_dir
         session = KernelSession(new_session_id, kernel_manager)
         
         downloaded_files = []
-        errors = []
-        
-        # Initialize session file config
         session_config = SessionFileConfig(session_dir)
         
-        # Download files from file_urls (legacy support)
+        # Process files
+        errors = []
         if file_urls:
-            for url in file_urls:
-                filename, error = await download_file(url, session_dir, timeout, verify_ssl=False)
-                if error:
-                    errors.append(error)
-                else:
-                    downloaded_files.append(filename)
+            errors.extend(await self._process_file_urls(file_urls, session_dir, timeout, downloaded_files))
         
-        # Download files from files list with ID management
         if files:
-            for file_item in files:
-                file_id = file_item.id
-                file_url = file_item.url
-                
-                # Check if file already exists
-                if session_config.has_file(file_id):
-                    existing_filename = session_config.get_filename(file_id)
-                    file_path = os.path.join(session_dir, existing_filename)
-                    
-                    # Verify file still exists on disk
-                    if os.path.exists(file_path):
-                        downloaded_files.append(existing_filename)
-                        logger.info(f"File {file_id} already exists: {existing_filename}")
-                        continue
-                    else:
-                        # File was deleted, remove from config and re-download
-                        session_config.remove_file(file_id)
-                        logger.warning(f"File {file_id} was deleted from disk, re-downloading")
-                
-                # Download new file
-                filename, error = await download_file(file_url, session_dir, timeout, verify_ssl=False)
-                if error:
-                    errors.append(f"Failed to download file {file_id}: {error}")
-                else:
-                    downloaded_files.append(filename)
-                    session_config.add_file(file_id, filename)
-                    logger.info(f"Downloaded new file {file_id}: {filename}")
+            errors.extend(await self._process_files_with_id(files, session_config, session_dir, timeout, downloaded_files))
         
         try:
             await session.start()
