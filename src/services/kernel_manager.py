@@ -282,7 +282,22 @@ class KernelManagerService:
             os.makedirs(session_dir, exist_ok=True)
             session.kernel_manager.cwd = session_dir
             
-            logger.info(f"Reused pooled session {old_session_id} as {new_session_id}")
+            # Change the kernel's working directory and wait for completion
+            if session.kernel_client:
+                chdir_code = f"import os; os.chdir('{session_dir}')"
+                msg_id = session.kernel_client.execute(chdir_code, silent=True)
+                
+                # Wait for the chdir command to complete
+                while True:
+                    reply = await asyncio.wait_for(
+                        session.kernel_client.get_iopub_msg(),
+                        timeout=0.5
+                    )
+                    if reply["msg_type"] == "status" and reply["content"].get("execution_state") == "idle":
+                        break
+             
+            
+            logger.info(f"Reused pooled session {old_session_id} as {new_session_id}, changed cwd to {session_dir}")
         else:
             # Create unique working directory for the session
             os.makedirs(session_dir, exist_ok=True)
