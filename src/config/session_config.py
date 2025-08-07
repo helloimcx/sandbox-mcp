@@ -106,3 +106,14 @@ class SessionFileConfig:
             Set of file IDs
         """
         return set(self._config.keys())
+    
+    def clear_all_files(self) -> None:
+        """Clear all files from config.
+        
+        This method removes all file entries from the configuration
+        and saves the empty configuration to disk.
+        """
+        file_count = len(self._config)
+        self._config.clear()
+        self._save_config()
+        logger.info(f"Cleared all {file_count} files from session config")

@@ -12,7 +12,7 @@ import logging
 from config.config import settings
 from schema.models import StreamMessage, MessageType, FileItem
 from utils.file_utils import download_file
-from utils.session_config import SessionFileConfig
+from config.session_config import SessionFileConfig
 
 logger = logging.getLogger(__name__)
 
@@ -22,29 +22,142 @@ class KernelManagerService:
     
     def __init__(self):
         self.sessions: Dict[str, KernelSession] = {}
+        self.session_pool: List[KernelSession] = []  # Pre-created sessions pool
         self._cleanup_task: Optional[asyncio.Task] = None
+        self._pool_refill_task: Optional[asyncio.Task] = None
+        self._pool_lock = asyncio.Lock()  # Lock for thread-safe pool operations
     
     async def start(self) -> None:
         """Start the kernel manager service."""
         self._cleanup_task = asyncio.create_task(self._cleanup_loop())
-        logger.info("Kernel manager service started")
+        self._pool_refill_task = asyncio.create_task(self._pool_refill_loop())
+        
+        # Initialize session pool
+        await self._initialize_session_pool()
+        
+        logger.info(f"Kernel manager service started with session pool size: {settings.session_pool_size}")
     
     async def stop(self) -> None:
         """Stop the kernel manager service."""
-        if self._cleanup_task:
-            self._cleanup_task.cancel()
-            try:
-                await self._cleanup_task
-            except asyncio.CancelledError:
-                pass
+        # Cancel background tasks
+        for task in [self._cleanup_task, self._pool_refill_task]:
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
         
-        # Stop all sessions
+        # Stop all active sessions
         for session in list(self.sessions.values()):
             await session.stop()
         self.sessions.clear()
+        
+        # Stop all pooled sessions
+        async with self._pool_lock:
+            for session in self.session_pool:
+                await session.stop()
+            self.session_pool.clear()
+        
         logger.info("Kernel manager service stopped")
     
-
+    async def _initialize_session_pool(self) -> None:
+        """Initialize the session pool with pre-created sessions."""
+        async with self._pool_lock:
+            for i in range(settings.session_pool_size):
+                try:
+                    session = await self._create_pool_session()
+                    self.session_pool.append(session)
+                    logger.info(f"Created pool session {i+1}/{settings.session_pool_size}")
+                except Exception as e:
+                    logger.error(f"Failed to create pool session {i+1}: {e}")
+    
+    async def _create_pool_session(self) -> KernelSession:
+        """Create a new session for the pool."""
+        session_id = f"pool_{str(uuid.uuid4())}"
+        session_dir = os.path.join('/tmp/sandbox_sessions', session_id)
+        
+        # Create unique working directory
+        os.makedirs(session_dir, exist_ok=True)
+        kernel_manager = AsyncKernelManager()
+        kernel_manager.cwd = session_dir
+        session = KernelSession(session_id, kernel_manager)
+        
+        await session.start()
+        return session
+    
+    async def _get_session_from_pool(self) -> Optional[KernelSession]:
+        """Get a session from the pool if available."""
+        async with self._pool_lock:
+            if self.session_pool:
+                session = self.session_pool.pop(0)
+                logger.info(f"Retrieved session from pool: {session.session_id}")
+                return session
+            return None
+    
+    async def _return_session_to_pool(self, session: KernelSession) -> bool:
+        """Return a session to the pool if there's space."""
+        async with self._pool_lock:
+            if len(self.session_pool) < settings.session_pool_size:
+                # Reset session state
+                session.execution_count = 0
+                session.is_busy = False
+                session.update_activity()
+                
+                # Clear session directory but keep the directory structure
+                session_dir = session.kernel_manager.cwd
+                try:
+                    # Remove all files in the session directory
+                    for filename in os.listdir(session_dir):
+                        file_path = os.path.join(session_dir, filename)
+                        if os.path.isfile(file_path):
+                            os.remove(file_path)
+                    
+                    # Clear session config
+                    session_config = SessionFileConfig(session_dir)
+                    session_config.clear_all_files()
+                    
+                    self.session_pool.append(session)
+                    logger.info(f"Returned session to pool: {session.session_id}")
+                    return True
+                except Exception as e:
+                    logger.error(f"Failed to clean session for pool return: {e}")
+                    await session.stop()
+                    return False
+            else:
+                # Pool is full, stop the session
+                await session.stop()
+                return False
+    
+    async def _pool_refill_loop(self) -> None:
+        """Background task to maintain the session pool."""
+        while True:
+            try:
+                await asyncio.sleep(settings.session_pool_refill_interval)
+                await self._refill_session_pool()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in pool refill loop: {e}")
+    
+    async def _refill_session_pool(self) -> None:
+        """Refill the session pool to maintain the desired size."""
+        async with self._pool_lock:
+            current_size = len(self.session_pool)
+            target_size = settings.session_pool_size
+            
+            if current_size < target_size:
+                sessions_to_create = target_size - current_size
+                logger.info(f"Refilling session pool: creating {sessions_to_create} sessions")
+                
+                for i in range(sessions_to_create):
+                    try:
+                        session = await self._create_pool_session()
+                        self.session_pool.append(session)
+                        logger.info(f"Created pool session during refill: {session.session_id}")
+                    except Exception as e:
+                        logger.error(f"Failed to create session during refill: {e}")
+                        break  # Stop creating more if we hit an error
     
     async def _process_existing_files(self, session_config: SessionFileConfig, session_dir: str) -> List[str]:
         """Process existing files and return list of valid files."""
@@ -158,11 +271,26 @@ class KernelManagerService:
         if len(self.sessions) >= settings.max_kernels:
             await self._cleanup_oldest_session()
         
-        # Create unique working directory for the session
-        os.makedirs(session_dir, exist_ok=True)
-        kernel_manager = AsyncKernelManager()
-        kernel_manager.cwd = session_dir
-        session = KernelSession(new_session_id, kernel_manager)
+        # Try to get a session from the pool first
+        session = await self._get_session_from_pool()
+        if session:
+            # Reuse pooled session with new ID and directory
+            old_session_id = session.session_id
+            session.session_id = new_session_id
+            
+            # Update session directory
+            os.makedirs(session_dir, exist_ok=True)
+            session.kernel_manager.cwd = session_dir
+            
+            logger.info(f"Reused pooled session {old_session_id} as {new_session_id}")
+        else:
+            # Create unique working directory for the session
+            os.makedirs(session_dir, exist_ok=True)
+            kernel_manager = AsyncKernelManager()
+            kernel_manager.cwd = session_dir
+            session = KernelSession(new_session_id, kernel_manager)
+            
+            logger.info(f"Created new session {new_session_id} (no pooled session available)")
         
         downloaded_files = []
         session_config = SessionFileConfig(session_dir)
@@ -176,12 +304,15 @@ class KernelManagerService:
             errors.extend(await self._process_files_with_id(files, session_config, session_dir, timeout, downloaded_files))
         
         try:
-            await session.start()
+            # Only start the session if it's not from the pool (pooled sessions are already running)
+            if session.session_id == new_session_id and not session.kernel_client:
+                await session.start()
+            
             self.sessions[new_session_id] = session
-            logger.info(f"Created new kernel session: {new_session_id} with cwd: {session_dir}")
+            logger.info(f"Session ready: {new_session_id} with cwd: {session_dir}")
             return session, downloaded_files, errors
         except Exception as e:
-            logger.error(f"Failed to create kernel session: {e}")
+            logger.error(f"Failed to prepare kernel session: {e}")
             await session.stop()
             raise
     
@@ -314,8 +445,33 @@ class KernelManagerService:
                 idle_sessions, key=lambda x: x[1].created_at
             )
             self.sessions.pop(oldest_session_id)
-            await oldest_session.stop()
+            
+            # Try to return to pool first, if that fails, stop the session
+            if not await self._return_session_to_pool(oldest_session):
+                await oldest_session.stop()
+            
             logger.info(f"Removed oldest session: {oldest_session_id}")
+    
+    async def terminate_session(self, session_id: str) -> bool:
+        """Terminate a specific session.
+        
+        Args:
+            session_id: ID of the session to terminate
+            
+        Returns:
+            True if session was found and terminated, False otherwise
+        """
+        if session_id not in self.sessions:
+            return False
+            
+        session = self.sessions.pop(session_id)
+        
+        # Try to return to pool first, if that fails, stop the session
+        if not await self._return_session_to_pool(session):
+            await session.stop()
+        
+        logger.info(f"Terminated session: {session_id}")
+        return True
     
     def get_session_info(self) -> Dict[str, Dict]:
         """Get information about all active sessions."""

@@ -182,11 +182,10 @@ async def terminate_session(
     _: bool = Depends(verify_api_key)
 ) -> Dict[str, str]:
     """Terminate a specific kernel session."""
-    if session_id not in kernel_manager.sessions:
-        raise HTTPException(status_code=404, detail="Session not found")
+    success = await kernel_manager.terminate_session(session_id)
     
-    session = kernel_manager.sessions.pop(session_id)
-    await session.stop()
+    if not success:
+        raise HTTPException(status_code=404, detail="Session not found")
     
     return {"message": f"Session {session_id} terminated"}
 

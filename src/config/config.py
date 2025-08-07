@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     max_kernels: int = Field(default=10, env="MAX_KERNELS")
     kernel_cleanup_interval: int = Field(default=60, env="KERNEL_CLEANUP_INTERVAL")
     
+    # Session pool configuration
+    session_pool_size: int = Field(default=3, env="SESSION_POOL_SIZE")
+    session_pool_max_idle_time: int = Field(default=600, env="SESSION_POOL_MAX_IDLE_TIME")
+    session_pool_refill_interval: int = Field(default=30, env="SESSION_POOL_REFILL_INTERVAL")
+    
     # Resource limits
     max_execution_time: int = Field(default=30, env="MAX_EXECUTION_TIME")
     max_memory_mb: int = Field(default=512, env="MAX_MEMORY_MB")

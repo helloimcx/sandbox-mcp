@@ -1,0 +1,21 @@
+meta {
+  name: sessions
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/sessions
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "session_id": "29f722dc-d661-48a5-89f1-e58d290b1958"
+  }
+}
+
+settings {
+  encodeUrl: true
+}
