@@ -26,7 +26,7 @@ class TestKernelSession:
         mock_client.start_channels = MagicMock()
         mock_client.stop_channels = MagicMock()
         mock_client.wait_for_ready = AsyncMock()
-        mock_km.client.return_value = mock_client
+        mock_km.client = MagicMock(return_value=mock_client)
         
         return mock_km
     

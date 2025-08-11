@@ -14,7 +14,7 @@ def client():
 
 @pytest.fixture
 def mock_kernel_manager():
-    with patch('src.sandbox_mcp.api.kernel_manager') as mock:
+    with patch('services.kernel_manager.kernel_manager') as mock:
         mock.sessions = {}
         async def mock_execute_code(*args, **kwargs):
             from schema.models import StreamMessage, MessageType

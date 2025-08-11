@@ -257,10 +257,5 @@ def test_validation_function(input_value, expected):
 - Bug 发现和修复时间
 - 代码复杂度指标
 
-## 团队协作
 
-### 1. 代码审查
-- 所有代码必须经过审查
-- 重点审查测试质量
-- 确保 TDD 流程被遵循
 
