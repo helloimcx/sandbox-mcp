@@ -1,11 +1,9 @@
 """File utility functions for the sandbox MCP server."""
 
 import os
-import time
 import aiohttp
 import aiofiles
-from urllib.parse import urlparse, unquote
-from pathlib import Path
+from urllib.parse import unquote
 from typing import Tuple, Optional
 import logging
 import re
@@ -40,30 +38,6 @@ def _extract_filename_from_content_disposition(content_disposition: str) -> Opti
     return None
 
 
-def _get_filename_from_url(url: str) -> str:
-    """Extract filename from URL path.
-    
-    Args:
-        url: File URL
-        
-    Returns:
-        Extracted filename or generated filename if not found
-    """
-    parsed_url = urlparse(url)
-    filename = Path(parsed_url.path).name
-    
-    # Remove query parameters and fragments from filename
-    if filename and '?' in filename:
-        filename = filename.split('?')[0]
-    if filename and '#' in filename:
-        filename = filename.split('#')[0]
-    
-    # If still no filename, generate one
-    if not filename or filename == '/':
-        filename = f"downloaded_file_{int(time.time())}"
-    
-    return filename
-
 
 async def download_file(url: str, target_dir: str, timeout: int = 30, verify_ssl: bool = True) -> Tuple[str, Optional[str]]:
     """Download a file from URL to target directory.
@@ -91,9 +65,10 @@ async def download_file(url: str, target_dir: str, timeout: int = 30, verify_ssl
                     content_disposition = response.headers.get('Content-Disposition')
                     filename = _extract_filename_from_content_disposition(content_disposition)
                     
-                    # 如果响应头中没有文件名，从URL中提取
+                    # 如果响应头中没有文件名，直接返回错误
                     if not filename:
-                        filename = _get_filename_from_url(url)
+                        error_msg = f"No filename could be determined from response headers for {url}"
+                        return None, error_msg
                     
                     file_path = os.path.join(target_dir, filename)
                     
@@ -103,16 +78,49 @@ async def download_file(url: str, target_dir: str, timeout: int = 30, verify_ssl
                     logger.info(f"Downloaded file {filename} from {url}")
                     return filename, None
                 else:
-                    # 即使下载失败，也尝试获取文件名用于错误报告
-                    if not filename:
-                        filename = _get_filename_from_url(url)
+                    # HTTP错误时不提取文件名，直接返回None
                     error_msg = f"HTTP {response.status}: Failed to download {url}"
                     logger.error(error_msg)
-                    return filename, error_msg
+                    return None, error_msg
     except Exception as e:
-        # 如果还没有文件名，从URL中提取
-        if not filename:
-            filename = _get_filename_from_url(url)
+        # 完全禁止从URL提取文件名，异常时返回None
         error_msg = f"Failed to download {url}: {str(e)}"
         logger.error(error_msg)
-        return filename, error_msg
+        return None, error_msg
+
+
+def sanitize_filename(filename: str) -> str:
+    """Sanitize filename by removing invalid characters.
+    
+    Args:
+        filename: Original filename
+        
+    Returns:
+        Sanitized filename safe for filesystem
+    """
+    if not filename:
+        return "unnamed_file"
+    
+    # Remove invalid characters for most filesystems
+    invalid_chars = r'[<>:"/\|?*]'
+    sanitized = re.sub(invalid_chars, '_', filename)
+    
+    # Remove leading/trailing spaces and dots
+    sanitized = sanitized.strip(' .')
+    
+    # Handle empty result
+    if not sanitized:
+        return "unnamed_file"
+    
+    # Limit length (keep extension if present)
+    max_length = 255
+    if len(sanitized) > max_length:
+        name, ext = os.path.splitext(sanitized)
+        if ext:
+            # Keep extension, truncate name
+            max_name_length = max_length - len(ext)
+            sanitized = name[:max_name_length] + ext
+        else:
+            sanitized = sanitized[:max_length]
+    
+    return sanitized
