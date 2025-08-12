@@ -1,7 +1,7 @@
 # Makefile for Python Sandbox MCP Server
 # Test-Driven Development (TDD) Workflow
 
-.PHONY: help install install-dev test test-unit test-integration test-e2e test-watch test-coverage test-fast lint format clean run docker-build docker-run setup-tdd
+.PHONY: help install install-dev test test-unit test-integration test-e2e test-watch test-coverage test-fast test-performance test-benchmark test-memory test-load test-profile lint format clean run docker-build docker-run setup-tdd
 
 # Default target
 help:
@@ -20,6 +20,13 @@ help:
 	@echo "  test-watch   - Run tests in watch mode (TDD)"
 	@echo "  test-coverage - Run tests with coverage report"
 	@echo "  test-fast    - Run fast tests (exclude slow)"
+	@echo ""
+	@echo "Performance Testing:"
+	@echo "  test-performance - Run all performance tests"
+	@echo "  test-benchmark   - Run benchmark tests"
+	@echo "  test-memory      - Run memory performance tests"
+	@echo "  test-load        - Run load tests (requires server)"
+	@echo "  test-profile     - Run profiling tests"
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  lint         - Run linting checks"
@@ -178,6 +185,60 @@ ci: format-check lint test
 
 # Quick start
 quick-start: install run
+
+# Performance Testing
+test-performance:
+	@echo "🚀 Running all performance tests..."
+	python scripts/run_performance_tests.py --type all
+
+test-benchmark:
+	@echo "⏱️  Running benchmark tests..."
+	python scripts/run_performance_tests.py --type benchmark
+
+test-memory:
+	@echo "🧠 Running memory performance tests..."
+	python scripts/run_performance_tests.py --type memory
+
+test-load:
+	@echo "📈 Running load tests..."
+	@echo "⚠️  Make sure the server is running: make run"
+	python scripts/run_performance_tests.py --type load
+
+test-load-quick:
+	@echo "📈 Running quick load tests (30s, 5 users)..."
+	python scripts/run_performance_tests.py --type load --duration 30 --users 5
+
+test-load-heavy:
+	@echo "📈 Running heavy load tests (300s, 50 users)..."
+	python scripts/run_performance_tests.py --type load --duration 300 --users 50
+
+test-profile:
+	@echo "🔍 Running profiling tests..."
+	python scripts/run_performance_tests.py --type profile
+
+perf-install:
+	@echo "📦 Installing performance testing dependencies..."
+	@if command -v uv >/dev/null 2>&1; then \
+		echo "Installing with uv..."; \
+		uv sync --group dev; \
+	else \
+		echo "Installing with pip..."; \
+		pip install pytest-benchmark>=4.0.0 locust>=2.17.0 memory-profiler>=0.61.0; \
+	fi
+	@echo "✅ Performance testing dependencies installed"
+
+perf-report:
+	@echo "📊 Generating performance report..."
+	python scripts/run_performance_tests.py --type benchmark --no-report
+	@echo "📈 Performance report available at: tests/reports/performance_report.html"
+
+# Performance testing workflow
+perf-setup: perf-install
+	@echo "🚀 Performance testing environment ready!"
+	@echo "Run 'make test-performance' to run all performance tests"
+
+perf-ci: test-benchmark test-memory
+	@echo "✅ Performance CI checks completed!"
 
 # Show project info
 info:
