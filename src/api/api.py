@@ -264,13 +264,22 @@ async def _process_message(message) -> Dict[str, Any]:
     
     elif msg_type == MessageType.ERROR:
         traceback = content.get('traceback', [])
-        # Use evalue for brief error description, fallback to last line of traceback
-        error_text = content.get('evalue')
-        if not error_text and traceback:
+        ename = content.get('ename', '')
+        evalue = content.get('evalue', '')
+        
+        # Build error text with ename and evalue
+        if ename and evalue:
+            error_text = f"{ename}: {evalue}"
+        elif evalue:
+            error_text = evalue
+        elif ename:
+            error_text = ename
+        elif traceback:
             # Extract the last line of traceback which usually contains the error message
             error_text = traceback[-1].strip() if traceback[-1].strip() else 'Unknown error'
-        if not error_text:
+        else:
             error_text = 'Unknown error'
+            
         return ErrorOutput(
             error=error_text,
             traceback=traceback
