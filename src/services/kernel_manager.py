@@ -26,6 +26,7 @@ class KernelManagerService:
         self._cleanup_task: Optional[asyncio.Task] = None
         self._pool_refill_task: Optional[asyncio.Task] = None
         self._pool_lock = asyncio.Lock()  # Lock for thread-safe pool operations
+        self._start_time = time.time()
     
     async def start(self) -> None:
         """Start the kernel manager service."""

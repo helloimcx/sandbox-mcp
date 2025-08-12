@@ -14,13 +14,16 @@ def client():
 
 @pytest.fixture
 def mock_kernel_manager():
-    with patch('services.kernel_manager.kernel_manager') as mock:
+    with patch('api.api.kernel_manager') as mock:
         mock.sessions = {}
         async def mock_execute_code(*args, **kwargs):
             from schema.models import StreamMessage, MessageType
             yield StreamMessage(type=MessageType.STREAM, content={'text': 'hello'}, timestamp=0)
         mock.execute_code = mock_execute_code
         mock.get_session_info = lambda: {}
+        async def mock_terminate_session(session_id):
+            return False
+        mock.terminate_session = mock_terminate_session
         yield mock
 
 class TestHealth:

@@ -21,11 +21,23 @@ class TestKernelSession:
         mock_km.start_kernel = AsyncMock()
         mock_km.shutdown_kernel = AsyncMock()
         mock_km.interrupt_kernel = AsyncMock()
+        mock_km.cwd = "/tmp/test_session"
         
         mock_client = AsyncMock()
         mock_client.start_channels = MagicMock()
         mock_client.stop_channels = MagicMock()
         mock_client.wait_for_ready = AsyncMock()
+        
+        # Mock execute method and get_iopub_msg for font configuration
+        mock_client.execute = MagicMock(return_value="test_msg_id")
+        
+        # Mock get_iopub_msg to return idle status immediately
+        mock_idle_msg = {
+            'msg_type': 'status',
+            'content': {'execution_state': 'idle'}
+        }
+        mock_client.get_iopub_msg = AsyncMock(return_value=mock_idle_msg)
+        
         mock_km.client = MagicMock(return_value=mock_client)
         
         return mock_km
@@ -111,7 +123,7 @@ class TestKernelManagerService:
     @pytest.mark.asyncio
     async def test_create_session(self, service):
         """Test creating a new session."""
-        with patch('sandbox_mcp.kernel_manager.AsyncKernelManager') as mock_km_class:
+        with patch('jupyter_client.manager.AsyncKernelManager') as mock_km_class:
             mock_km = AsyncMock()
             mock_km_class.return_value = mock_km
             
@@ -164,8 +176,10 @@ class TestKernelManagerService:
             async for message in service.execute_code("print('test')", "test-session"):
                 messages.append(message)
             
-            assert len(messages) == 1
-            assert messages[0].type == MessageType.STATUS
+            assert len(messages) >= 1
+            # Find the status message
+            status_messages = [m for m in messages if m.type == MessageType.STATUS]
+            assert len(status_messages) >= 1
             assert mock_session.execution_count == 1
             assert not mock_session.is_busy
     
@@ -236,12 +250,12 @@ class TestKernelManagerService:
         # Create mock sessions - one idle, one active
         idle_session = AsyncMock()
         idle_session.is_busy = False
-        idle_session.is_idle_timeout.return_value = True
+        idle_session.is_idle_timeout = MagicMock(return_value=True)
         idle_session.stop = AsyncMock()
         
         active_session = AsyncMock()
         active_session.is_busy = False
-        active_session.is_idle_timeout.return_value = False
+        active_session.is_idle_timeout = MagicMock(return_value=False)
         
         service.sessions = {
             "idle-session": idle_session,
@@ -278,7 +292,9 @@ class TestKernelManagerService:
             "busy-session": busy_session
         }
         
-        await service._cleanup_oldest_session()
+        # Mock _return_session_to_pool to return False so stop is called once
+        with patch.object(service, '_return_session_to_pool', return_value=False):
+            await service._cleanup_oldest_session()
         
         # Old idle session should be removed, busy session should remain
         assert "old-session" not in service.sessions

@@ -36,6 +36,8 @@ class SessionFileConfig:
                 self._config = {}
         else:
             self._config = {}
+            # Create the config file if it doesn't exist
+            self._save_config()
     
     def _save_config(self) -> None:
         """Save configuration to file."""

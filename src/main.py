@@ -81,13 +81,16 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health():
         """Health check endpoint."""
+        import time
         return {
             "name": "Python Sandbox MCP Server",
             "version": __version__,
-            "status": "running",
+            "status": "healthy",
             "docs": "/docs" if settings.debug else "disabled",
             "mcp_endpoint": mcp_prefix,
             "api_endpoint": api_prefix,
+            "active_sessions": len(kernel_manager.sessions),
+            "uptime": time.time() - kernel_manager._start_time if hasattr(kernel_manager, '_start_time') else 0,
         }
     
     return app
