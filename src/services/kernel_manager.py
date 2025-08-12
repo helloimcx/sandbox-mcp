@@ -296,7 +296,9 @@ class KernelManagerService:
                     )
                     if reply["msg_type"] == "status" and reply["content"].get("execution_state") == "idle":
                         break
-             
+            
+            # Update activity timestamp for reused session
+            session.update_activity()
             
             logger.info(f"Reused pooled session {old_session_id} as {new_session_id}, changed cwd to {session_dir}")
         else:
@@ -323,6 +325,9 @@ class KernelManagerService:
             # Only start the session if it's not from the pool (pooled sessions are already running)
             if session.session_id == new_session_id and not session.kernel_client:
                 await session.start()
+            
+            # Update activity timestamp to prevent immediate cleanup
+            session.update_activity()
             
             self.sessions[new_session_id] = session
             logger.info(f"Session ready: {new_session_id} with cwd: {session_dir}")
