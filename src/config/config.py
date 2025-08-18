@@ -33,8 +33,6 @@ class Settings(BaseSettings):
     
     # Network access control
     enable_network_access: bool = Field(default=False, env="ENABLE_NETWORK_ACCESS")
-    allowed_domains: list[str] = Field(default=[], env="ALLOWED_DOMAINS")
-    blocked_domains: list[str] = Field(default=[], env="BLOCKED_DOMAINS")
     
     # Logging configuration
     log_dir: str = Field(default="logs", env="LOG_DIR")

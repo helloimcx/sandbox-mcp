@@ -3,6 +3,7 @@
 ## 概述
 - Makefile集成了很多常用的开发命令，如服务启动、测试、打包等。
 - 用uv管理python依赖
+- api路径前缀/ai/sandox/v1/api
 - 本项目采用测试驱动开发（Test-Driven Development, TDD）方法论，确保代码质量、可维护性和功能正确性。
 
 ## TDD 开发流程
@@ -244,19 +245,6 @@ def test_validation_function(input_value, expected):
 - 测试 API 权限控制
 - 测试会话隔离
 - 测试文件访问权限
-
-## 监控和报告
-
-### 1. 测试报告
-- 自动生成测试覆盖率报告
-- 生成 HTML 格式的详细报告
-- 集成到 CI/CD 流水线
-
-### 2. 质量指标
-- 代码覆盖率趋势
-- 测试执行时间趋势
-- Bug 发现和修复时间
-- 代码复杂度指标
 
 
 

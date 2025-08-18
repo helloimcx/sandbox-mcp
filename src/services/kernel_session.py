@@ -7,7 +7,6 @@ from jupyter_client import AsyncKernelClient
 import logging
 
 from config.config import settings
-from utils.network_restriction import apply_network_restrictions, temporary_network_access
 
 logger = logging.getLogger(__name__)
 
@@ -27,19 +26,17 @@ class KernelSession:
     async def start(self) -> None:
         """Start the kernel and client."""
         # Use temporary network access for kernel startup (port allocation)
-        with temporary_network_access():
-            await self.kernel_manager.start_kernel(cwd=self.kernel_manager.cwd)
-            self.kernel_client = self.kernel_manager.client()
-            self.kernel_client.start_channels()
-            await self.kernel_client.wait_for_ready()
+        await self.kernel_manager.start_kernel(cwd=self.kernel_manager.cwd)
+        self.kernel_client = self.kernel_manager.client()
+        self.kernel_client.start_channels()
+        await self.kernel_client.wait_for_ready()
         
-        # Apply network restrictions only if explicitly configured
+        # Apply network restrictions only in kernel if explicitly configured
         if hasattr(settings, 'enable_network_access'):
-            apply_network_restrictions(
-                enable_network=settings.enable_network_access,
-                allowed_domains=settings.allowed_domains,
-                blocked_domains=settings.blocked_domains
-            )
+            # If network access is disabled, execute restriction code in the kernel
+            if not settings.enable_network_access:
+                await self._apply_kernel_network_restrictions()
+            
             logger.info(f"Network restrictions applied for session {self.session_id}: "
                        f"enabled={settings.enable_network_access}")
         else:
@@ -70,6 +67,72 @@ except Exception:
             logger.warning(f"Failed to execute font configuration for session {self.session_id}: {e}")
         
         logger.info(f"Kernel session {self.session_id} started")
+    
+    async def _apply_kernel_network_restrictions(self) -> None:
+        """Apply network restrictions directly in the kernel by executing restriction code."""
+        # 简单的模块置空方法 - 基础但有效的网络限制
+        simple_restriction_code = '''
+# 简单但有效的网络限制方法
+import sys
+
+# 直接将网络相关模块设置为 None，阻止导入和使用
+sys.modules["urllib"] = None
+sys.modules["urllib2"] = None
+sys.modules["urllib3"] = None
+sys.modules["requests"] = None
+sys.modules["httplib"] = None
+sys.modules["httplib2"] = None
+sys.modules["socket"] = None
+sys.modules["socketserver"] = None
+sys.modules["http"] = None
+sys.modules["ftplib"] = None
+sys.modules["smtplib"] = None
+sys.modules["poplib"] = None
+sys.modules["imaplib"] = None
+sys.modules["telnetlib"] = None
+sys.modules["xmlrpc"] = None
+sys.modules["aiohttp"] = None
+sys.modules["httpx"] = None
+sys.modules["websocket"] = None
+sys.modules["websockets"] = None
+
+# 同时替换 __import__ 函数以阻止后续导入
+banned_modules = [
+    'urllib', 'urllib2', 'urllib3', 'requests', 'httplib', 'httplib2',
+    'socket', 'socketserver', 'http', 'ftplib', 'smtplib', 'poplib',
+    'imaplib', 'telnetlib', 'xmlrpc', 'aiohttp', 'httpx', 'websocket',
+    'websockets', 'tornado', 'twisted', 'paramiko', 'fabric'
+]
+
+original_import = __builtins__.__import__
+
+def restricted_import(name, *args, **kwargs):
+    if name in banned_modules or any(name.startswith(mod + '.') for mod in banned_modules):
+        raise ImportError(f"Module '{name}' is restricted for security reasons")
+    return original_import(name, *args, **kwargs)
+
+__builtins__.__import__ = restricted_import
+
+print("Network restrictions applied in kernel (simple + import blocking)")
+'''
+        
+        try:
+            # Execute network restriction code in the kernel
+            msg_id = self.kernel_client.execute(simple_restriction_code, silent=True)
+            
+            # Wait for execution to complete
+            while True:
+                reply = await self.kernel_client.get_iopub_msg()
+                if reply['msg_type'] == 'status' and reply['content'].get('execution_state') == 'idle':
+                    break
+                elif reply['msg_type'] == 'stream' and reply['content'].get('name') == 'stdout':
+                    if 'Network restrictions applied in kernel (simple + import blocking)' in reply['content'].get('text', ''):
+                        logger.info(f"Network restrictions successfully applied in kernel {self.session_id}")
+                elif reply['msg_type'] == 'error':
+                    logger.error(f"Error applying network restrictions in kernel {self.session_id}: {reply['content']}")
+                    
+        except Exception as e:
+            logger.error(f"Failed to apply network restrictions in kernel {self.session_id}: {e}")
     
     async def stop(self) -> None:
         """Stop the kernel and client."""

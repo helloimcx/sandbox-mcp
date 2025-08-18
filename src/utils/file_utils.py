@@ -7,7 +7,7 @@ from urllib.parse import unquote
 from typing import Tuple, Optional
 import logging
 import re
-from .network_restriction import temporary_network_access
+
 
 logger = logging.getLogger(__name__)
 
@@ -54,37 +54,36 @@ async def download_file(url: str, target_dir: str, timeout: int = 30, verify_ssl
     """
     filename = None
     try:
-        # 临时禁用网络限制以允许文件下载
-        with temporary_network_access():
-            # 创建SSL上下文，可选择禁用证书验证
-            ssl_context = None
-            if not verify_ssl:
-                ssl_context = False  # aiohttp中使用False表示禁用SSL验证
-            
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
-                async with session.get(url, ssl=ssl_context) as response:
-                    if response.status == 200:
-                        # 尝试从响应头获取文件名
-                        content_disposition = response.headers.get('Content-Disposition')
-                        filename = _extract_filename_from_content_disposition(content_disposition)
-                        
-                        # 如果响应头中没有文件名，直接返回错误
-                        if not filename:
-                            error_msg = f"No filename could be determined from response headers for {url}"
-                            return None, error_msg
-                        
-                        file_path = os.path.join(target_dir, filename)
-                        
-                        async with aiofiles.open(file_path, 'wb') as f:
-                            async for chunk in response.content.iter_chunked(8192):
-                                await f.write(chunk)
-                        logger.info(f"Downloaded file {filename} from {url}")
-                        return filename, None
-                    else:
-                        # HTTP错误时不提取文件名，直接返回None
-                        error_msg = f"HTTP {response.status}: Failed to download {url}"
-                        logger.error(error_msg)
+        # 文件下载在服务器进程中执行，不受 kernel 网络限制影响
+        # 创建SSL上下文，可选择禁用证书验证
+        ssl_context = None
+        if not verify_ssl:
+            ssl_context = False  # aiohttp中使用False表示禁用SSL验证
+        
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
+            async with session.get(url, ssl=ssl_context) as response:
+                if response.status == 200:
+                    # 尝试从响应头获取文件名
+                    content_disposition = response.headers.get('Content-Disposition')
+                    filename = _extract_filename_from_content_disposition(content_disposition)
+                    
+                    # 如果响应头中没有文件名，直接返回错误
+                    if not filename:
+                        error_msg = f"No filename could be determined from response headers for {url}"
                         return None, error_msg
+                    
+                    file_path = os.path.join(target_dir, filename)
+                    
+                    async with aiofiles.open(file_path, 'wb') as f:
+                        async for chunk in response.content.iter_chunked(8192):
+                            await f.write(chunk)
+                    logger.info(f"Downloaded file {filename} from {url}")
+                    return filename, None
+                else:
+                    # HTTP错误时不提取文件名，直接返回None
+                    error_msg = f"HTTP {response.status}: Failed to download {url}"
+                    logger.error(error_msg)
+                    return None, error_msg
     except Exception as e:
         # 完全禁止从URL提取文件名，异常时返回None
         error_msg = f"Failed to download {url}: {str(e)}"
