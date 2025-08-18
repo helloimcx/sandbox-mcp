@@ -101,6 +101,7 @@ Examples:
             host=args.host,
             port=args.port,
             reload=args.debug,
+            reload_dirs=["src"] if args.debug else None,
             log_level="info" if not args.debug else "debug",
             access_log=args.debug
         )

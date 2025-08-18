@@ -7,7 +7,7 @@ from jupyter_client import AsyncKernelClient
 import logging
 
 from config.config import settings
-from utils.network_restriction import apply_network_restrictions
+from utils.network_restriction import apply_network_restrictions, temporary_network_access
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +26,12 @@ class KernelSession:
     
     async def start(self) -> None:
         """Start the kernel and client."""
-        await self.kernel_manager.start_kernel(cwd=self.kernel_manager.cwd)
-        self.kernel_client = self.kernel_manager.client()
-        self.kernel_client.start_channels()
-        await self.kernel_client.wait_for_ready()
+        # Use temporary network access for kernel startup (port allocation)
+        with temporary_network_access():
+            await self.kernel_manager.start_kernel(cwd=self.kernel_manager.cwd)
+            self.kernel_client = self.kernel_manager.client()
+            self.kernel_client.start_channels()
+            await self.kernel_client.wait_for_ready()
         
         # Apply network restrictions only if explicitly configured
         if hasattr(settings, 'enable_network_access'):
