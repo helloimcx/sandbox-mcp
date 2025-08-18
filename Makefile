@@ -28,11 +28,6 @@ help:
 	@echo "  test-load        - Run load tests (requires server)"
 	@echo "  test-profile     - Run profiling tests"
 	@echo ""
-	@echo "Code Quality:"
-	@echo "  lint         - Run linting checks"
-	@echo "  format       - Format code"
-	@echo ""
-	@echo "Development:"
 	@echo "  clean        - Clean up temporary files"
 	@echo "  run          - Run the server"
 	@echo "  docker-build - Build Docker image"
@@ -244,7 +239,3 @@ perf-ci: test-benchmark test-memory
 info:
 	@echo "Python Sandbox MCP Server"
 	@echo "========================"
-	@python -c "import sys; print(f'Python: {sys.version}')"
-	@echo "Project structure:"
-	@find src/ -name "*.py" | head -10
-	@echo "..."

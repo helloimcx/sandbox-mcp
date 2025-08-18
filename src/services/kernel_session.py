@@ -70,50 +70,19 @@ except Exception:
     
     async def _apply_kernel_network_restrictions(self) -> None:
         """Apply network restrictions directly in the kernel by executing restriction code."""
-        # 简单的模块置空方法 - 基础但有效的网络限制
+        # 简单高效的socket阻断方法 - 阻止所有基于socket的网络访问
         simple_restriction_code = '''
-# 简单但有效的网络限制方法
-import sys
+# 简单高效的网络限制方法 - 直接阻断socket连接
+import socket
 
-# 直接将网络相关模块设置为 None，阻止导入和使用
-sys.modules["urllib"] = None
-sys.modules["urllib2"] = None
-sys.modules["urllib3"] = None
-sys.modules["requests"] = None
-sys.modules["httplib"] = None
-sys.modules["httplib2"] = None
-sys.modules["socket"] = None
-sys.modules["socketserver"] = None
-sys.modules["http"] = None
-sys.modules["ftplib"] = None
-sys.modules["smtplib"] = None
-sys.modules["poplib"] = None
-sys.modules["imaplib"] = None
-sys.modules["telnetlib"] = None
-sys.modules["xmlrpc"] = None
-sys.modules["aiohttp"] = None
-sys.modules["httpx"] = None
-sys.modules["websocket"] = None
-sys.modules["websockets"] = None
+def disabled_socket(*args, **kwargs):
+    """替换socket.socket函数，阻止所有网络连接。"""
+    raise OSError("Network access is disabled for security reasons")
 
-# 同时替换 __import__ 函数以阻止后续导入
-banned_modules = [
-    'urllib', 'urllib2', 'urllib3', 'requests', 'httplib', 'httplib2',
-    'socket', 'socketserver', 'http', 'ftplib', 'smtplib', 'poplib',
-    'imaplib', 'telnetlib', 'xmlrpc', 'aiohttp', 'httpx', 'websocket',
-    'websockets', 'tornado', 'twisted', 'paramiko', 'fabric'
-]
+# 替换socket.socket函数
+socket.socket = disabled_socket
 
-original_import = __builtins__.__import__
-
-def restricted_import(name, *args, **kwargs):
-    if name in banned_modules or any(name.startswith(mod + '.') for mod in banned_modules):
-        raise ImportError(f"Module '{name}' is restricted for security reasons")
-    return original_import(name, *args, **kwargs)
-
-__builtins__.__import__ = restricted_import
-
-print("Network restrictions applied in kernel (simple + import blocking)")
+print("Network restrictions applied in kernel (simple socket blocking)")
 '''
         
         try:
@@ -126,7 +95,7 @@ print("Network restrictions applied in kernel (simple + import blocking)")
                 if reply['msg_type'] == 'status' and reply['content'].get('execution_state') == 'idle':
                     break
                 elif reply['msg_type'] == 'stream' and reply['content'].get('name') == 'stdout':
-                    if 'Network restrictions applied in kernel (simple + import blocking)' in reply['content'].get('text', ''):
+                    if 'Network restrictions applied in kernel (simple socket blocking)' in reply['content'].get('text', ''):
                         logger.info(f"Network restrictions successfully applied in kernel {self.session_id}")
                 elif reply['msg_type'] == 'error':
                     logger.error(f"Error applying network restrictions in kernel {self.session_id}: {reply['content']}")
