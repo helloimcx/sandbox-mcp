@@ -205,6 +205,23 @@ def get_network_status() -> dict:
     }
 
 
+class temporary_network_access:
+    """Context manager to temporarily disable network restrictions for file downloads."""
+    
+    def __init__(self):
+        self.original_restrictions_active = None
+    
+    def __enter__(self):
+        global _network_restrictions_active
+        self.original_restrictions_active = _network_restrictions_active
+        _network_restrictions_active = False
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        global _network_restrictions_active
+        _network_restrictions_active = self.original_restrictions_active
+
+
 def apply_network_restrictions(enable_network: bool = False,
                              allowed_domains: Optional[List[str]] = None,
                              blocked_domains: Optional[List[str]] = None) -> None:
