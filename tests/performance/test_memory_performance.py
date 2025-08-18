@@ -182,7 +182,7 @@ class TestMemoryPerformance:
                 # Create multiple concurrent sessions
                 for i in range(20):
                     task = asyncio.create_task(
-                        service.create_session(f"concurrent-session-{i}")
+                        service.get_or_create_session(f"concurrent-session-{i}")
                     )
                     tasks.append(task)
                 
@@ -190,18 +190,21 @@ class TestMemoryPerformance:
                 sessions = await asyncio.gather(*tasks)
                 return sessions
         
-        # Measure memory usage
-        mem_usage = memory_usage((lambda: asyncio.run(create_concurrent_sessions()), ()))
+        # Measure memory usage without nested asyncio.run
+        initial_memory = self.get_memory_usage()
         
-        max_memory = max(mem_usage)
-        min_memory = min(mem_usage)
-        memory_increase = max_memory - min_memory
+        # Create concurrent sessions
+        sessions = await create_concurrent_sessions()
         
-        print(f"Memory usage during concurrent session creation: {min_memory:.2f} - {max_memory:.2f} MB")
+        final_memory = self.get_memory_usage()
+        memory_increase = final_memory - initial_memory
+        
+        print(f"Memory usage during concurrent session creation: {initial_memory:.2f} - {final_memory:.2f} MB")
         print(f"Memory increase: {memory_increase:.2f} MB")
         
         # Memory increase should be reasonable for 20 sessions
         assert memory_increase < 100  # Less than 100MB for 20 sessions
+        assert len(sessions) == 20  # Ensure all sessions were created
     
     def test_large_data_processing_memory(self, mock_kernel_manager):
         """Test memory usage when processing large data structures."""
@@ -211,7 +214,7 @@ class TestMemoryPerformance:
             # Simulate large data processing
             large_data = {
                 'data': list(range(100000)),  # 100k integers
-                'metadata': {'key': 'value'} * 1000,  # Large metadata
+                'metadata': {f'key_{i}': f'value_{i}' for i in range(1000)},  # Large metadata
                 'results': [{'id': i, 'value': i * 2} for i in range(10000)]  # 10k results
             }
             

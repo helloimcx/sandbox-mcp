@@ -7,6 +7,7 @@ from jupyter_client import AsyncKernelClient
 import logging
 
 from config.config import settings
+from utils.network_restriction import apply_network_restrictions
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,18 @@ class KernelSession:
         self.kernel_client = self.kernel_manager.client()
         self.kernel_client.start_channels()
         await self.kernel_client.wait_for_ready()
+        
+        # Apply network restrictions only if explicitly configured
+        if hasattr(settings, 'enable_network_access'):
+            apply_network_restrictions(
+                enable_network=settings.enable_network_access,
+                allowed_domains=settings.allowed_domains,
+                blocked_domains=settings.blocked_domains
+            )
+            logger.info(f"Network restrictions applied for session {self.session_id}: "
+                       f"enabled={settings.enable_network_access}")
+        else:
+            logger.info(f"Network restrictions not configured for session {self.session_id}")
         
         # 重新实现字体配置，确保matplotlib图片能被正确捕获
         font_setup_code = """import matplotlib.pyplot as plt

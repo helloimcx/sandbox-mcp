@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     max_execution_time: int = Field(default=30, env="MAX_EXECUTION_TIME")
     max_memory_mb: int = Field(default=512, env="MAX_MEMORY_MB")
     
+    # Network access control
+    enable_network_access: bool = Field(default=False, env="ENABLE_NETWORK_ACCESS")
+    allowed_domains: list[str] = Field(default=[], env="ALLOWED_DOMAINS")
+    blocked_domains: list[str] = Field(default=[], env="BLOCKED_DOMAINS")
+    
     # Logging configuration
     log_dir: str = Field(default="logs", env="LOG_DIR")
     

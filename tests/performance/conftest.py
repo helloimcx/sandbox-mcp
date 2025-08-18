@@ -4,9 +4,13 @@ import pytest
 import asyncio
 import time
 import os
+import sys
 import tempfile
 import shutil
 from pathlib import Path
+
+# Add src to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
 
 
 @pytest.fixture(scope="session")
@@ -284,6 +288,45 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.memory)
         if "load" in item.name:
             item.add_marker(pytest.mark.load)
+
+
+@pytest.fixture(autouse=True)
+def disable_network_restrictions_for_performance():
+    """Disable network restrictions for performance tests."""
+    from unittest.mock import patch, AsyncMock, MagicMock
+    from contextlib import asynccontextmanager
+    
+    # Mock all network restriction functions to do nothing
+    def mock_apply_network_restrictions(*args, **kwargs):
+        pass
+    
+    def mock_disable_network_access():
+        pass
+    
+    def mock_enable_network_access(*args, **kwargs):
+        pass
+    
+    def mock_restore_network_access():
+        pass
+    
+    @asynccontextmanager
+    async def mock_lifespan(app):
+        # Do nothing during startup/shutdown to avoid network restrictions
+        yield
+    
+    with patch('services.kernel_manager.kernel_manager') as mock_km, \
+         patch('main.combined_lifespan', mock_lifespan), \
+         patch('utils.network_restriction.apply_network_restrictions', mock_apply_network_restrictions), \
+         patch('utils.network_restriction.disable_network_access', mock_disable_network_access), \
+         patch('utils.network_restriction.enable_network_access', mock_enable_network_access), \
+         patch('utils.network_restriction.restore_network_access', mock_restore_network_access):
+        
+        # Mock the kernel manager to prevent startup network restrictions
+        mock_km.start = AsyncMock()
+        mock_km.stop = AsyncMock()
+        mock_km.sessions = {}
+        
+        yield
 
 
 @pytest.fixture(autouse=True)
